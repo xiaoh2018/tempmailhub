@@ -195,9 +195,13 @@ export class MailTmProvider implements IMailProvider {
     try {
       this.updateStats('request');
 
+      await this.ensureConnectionTested();
+
       const prefix = request.prefix || generateEmailPrefix(10);
       // Mail.tm 实际只有一个域名，不需要随机选择
-      const domain = this.availableDomains[0] || 'somoj.com';
+      const domain = request.domain && this.availableDomains.includes(request.domain)
+        ? request.domain
+        : this.availableDomains[0];
       
       if (!domain) {
         throw this.createError(
@@ -558,6 +562,7 @@ export class MailTmProvider implements IMailProvider {
     }
   }
 
+/*
   private async fetchAvailableDomains(): Promise<void> {
     try {
       const response = await httpClient.get<MailTmDomainsResponse>(`${this.baseUrl}/domains`);
@@ -570,6 +575,42 @@ export class MailTmProvider implements IMailProvider {
     } catch (error) {
       // 使用默认域名
       this.availableDomains = ['somoj.com'];
+    }
+  }
+
+  }
+*/
+
+  private async fetchAvailableDomains(): Promise<void> {
+    const response = await httpClient.get<MailTmDomainsResponse>(`${this.baseUrl}/domains?page=1`, {
+      headers: {
+        accept: 'application/json'
+      },
+      timeout: this.config.timeout,
+      retries: this.config.retries
+    });
+
+    if (!response.ok) {
+      throw this.createError(
+        ChannelErrorType.API_ERROR,
+        `Mail.tm domains request failed: ${response.status} ${response.statusText}`,
+        response.status
+      );
+    }
+
+    const domainItems = Array.isArray(response.data)
+      ? response.data
+      : (response.data['hydra:member'] || []);
+
+    this.availableDomains = domainItems
+      .filter(domain => domain.isActive && !domain.isPrivate)
+      .map(domain => domain.domain);
+
+    if (!this.availableDomains.length) {
+      throw this.createError(
+        ChannelErrorType.API_ERROR,
+        'Mail.tm returned no active public domains'
+      );
     }
   }
 

@@ -1,875 +1,433 @@
 # TempMailHub API 文档
 
-## 🏗️ 系统架构
+## 概览
 
-### 整体架构图
+TempMailHub 是一个聚合型临时邮箱 API 网关，当前统一接入以下 6 个渠道：
 
-```mermaid
-graph LR
-    Client[客户端] --> Auth[API认证中间件]
-    Auth --> Service[邮件服务层]
-    Service --> Manager[Provider管理器]
-    Manager --> Adapter[Provider适配器]
-    Adapter --> External[外部API]
+- `tempmaillol` / Tempmail.lol
+- `duckmail` / DuckMail
+- `tempmailing` / Tempmail.ing
+- `minmail` / MinMail
+- `mailtm` / Mail.tm
+- `etempmail` / EtempMail
 
-    %% 样式设置
-    classDef clientClass fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    classDef authClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef serviceClass fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    classDef managerClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef adapterClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    classDef externalClass fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+## Base URL
 
-    class Client clientClass
-    class Auth authClass
-    class Service serviceClass
-    class Manager managerClass
-    class Adapter adapterClass
-    class External externalClass
+本地开发默认地址：
+
+```text
+http://localhost:8787
 ```
 
-**架构说明**：
-- 📱 **客户端**：发起API请求（Web、Mobile、API Client等）
-- 🔐 **API认证中间件**：验证TempMailHub API Key
-- 🔧 **邮件服务层**：核心业务逻辑，统一接口处理
-- 📋 **Provider管理器**：智能选择最优Provider，性能优先级管理
-- 🔌 **Provider适配器**：统一各邮件服务商的接口适配
-- 🌐 **外部API**：各个临时邮箱服务提供商的原生API
+## 认证说明
 
-### 数据流时序图
+### 第一层：TempMailHub API Key
 
-```mermaid
-sequenceDiagram
-    participant Client as 客户端
-    participant Auth as API认证中间件
-    participant Service as 邮件服务层
-    participant Manager as Provider管理器
-    participant Adapter as Provider适配器
-    participant External as 外部API
+如果服务端启用了 API Key，受保护接口需要在请求头中传入：
 
-    Note over Client,External: 创建邮箱流程
-
-    Client->>+Auth: POST /api/mail/create<br/>Bearer Token + {provider?, domain?, prefix?}
-    Auth->>Auth: 验证API Key
-    Auth->>+Service: createEmail(request)
-    Service->>Service: 分析capabilities需求<br/>(customDomains, customPrefix, etc.)
-    
-    alt 指定了provider
-        Service->>+Manager: getProvider(providerName)
-    else 自动选择
-        Service->>+Manager: getBestProvider(capabilities)
-        Manager->>Manager: 性能优先级排序<br/>(TempMailPlus > MinMail > ...)
-    end
-    
-    Manager-->>-Service: 返回Provider实例
-    Service->>+Adapter: createEmail(request)
-    Adapter->>+External: 调用具体API<br/>(各Provider API不同)
-    External-->>-Adapter: 邮箱创建成功<br/>{address, accessToken?, domain, etc.}
-    Adapter-->>-Service: 返回ChannelResponse<CreateEmailResponse>
-    Service-->>-Auth: 返回ApiResponse结果
-    Auth-->>-Client: JSON响应 + provider名称
-
-    Note over Client,External: 获取邮件列表流程
-
-    Client->>+Auth: POST /api/mail/list<br/>{address, provider?, accessToken?}
-    Auth->>+Service: getEmails(query)
-    
-    alt 指定了provider
-        Service->>+Manager: getProvider(providerName)
-    else 自动推断
-        Service->>Service: inferProviderFromEmail(address)<br/>基于域名映射
-        Service->>+Manager: getProvider(inferredName)
-    end
-    
-    Manager-->>-Service: 返回Provider实例
-    Service->>+Adapter: getEmails(query)
-    Note over Adapter: query包含address, accessToken等
-    Adapter->>+External: 调用邮件列表API<br/>(token处理因Provider而异)
-    External-->>-Adapter: 邮件列表数据
-    Adapter->>Adapter: 数据格式标准化<br/>textContent摘要处理
-    Adapter-->>-Service: 返回ChannelResponse<EmailMessage[]>
-    Service-->>-Auth: 返回ApiResponse结果
-    Auth-->>-Client: JSON响应 + provider名称
-
-    Note over Client,External: 获取邮件详情流程
-
-    Client->>+Auth: POST /api/mail/content<br/>{address, id, provider?, accessToken?}
-    Auth->>+Service: getEmailContent(address, id, provider?, accessToken?)
-    
-    alt 指定了provider
-        Service->>+Manager: getProvider(providerName)
-    else 自动推断
-        Service->>Service: inferProviderFromEmail(address)
-        Service->>+Manager: getProvider(inferredName)
-    end
-    
-    Manager-->>-Service: 返回Provider实例
-    Service->>+Adapter: getEmailContent(address, id, accessToken?)
-    Adapter->>+External: 调用邮件详情API<br/>(各Provider的API路径不同)
-    External-->>-Adapter: 完整邮件内容
-    Adapter->>Adapter: 解析HTML/文本内容<br/>提取附件信息
-    Adapter-->>-Service: 返回ChannelResponse<EmailMessage>
-    Service-->>-Auth: 返回ApiResponse结果
-    Auth-->>-Client: JSON响应 + provider名称
+```http
+Authorization: Bearer YOUR_API_KEY
 ```
 
-## 🎯 设计理念
+### 第二层：Provider AccessToken
 
-为了简化用户对接，设计统一的邮件获取接口，用户只需要传递：
-- `address`: 邮箱地址  
-- `provider`: 提供商名称（可选，系统可自动推断）
-- `accessToken`: 访问令牌（可选，有些提供商需要）
+以下渠道在收件箱读取阶段建议显式传入 `accessToken`：
 
-各提供商内部自行处理认证逻辑，用户无需关心具体的认证机制差异。
+- Tempmail.lol
+- DuckMail
+- Mail.tm
 
-## 🔐 双层认证架构
+重要说明：
 
-TempMailHub 采用双层认证架构，保证服务安全性：
+- `accessToken` 会在创建邮箱成功后由对应渠道返回。
+- `accessToken` 应放在 JSON 请求体中，不要放进 `Authorization` 请求头。
+- 对于 Serverless / 冷启动场景，不要依赖服务端内存缓存 token，客户端应自行保存并回传。
+- `/api/mail/list` 同时兼容 `accessToken` 和 `token` 字段。
+- `/api/mail/content` 同时兼容 `emailId` 和 `id` 字段。
 
-### 第一层：API Key 认证（TempMailHub 服务层）
+示例：
 
-保护 TempMailHub 服务本身，防止未授权访问。
+```json
+{
+  "address": "demo@example.com",
+  "provider": "mailtm",
+  "accessToken": "provider_specific_token"
+}
+```
 
-**配置 API Key**
+## 提供商能力对比
+
+| 提供商 | 渠道 ID | 域名 | 需要 accessToken | 支持自定义域名 | 支持自定义前缀 | 说明 |
+|-------|---------|------|------------------|----------------|----------------|------|
+| Tempmail.lol | `tempmaillol` | 服务端分配 | ✅ | ❌ | ❌ | 免费层可能触发风控，服务端带代理兜底 |
+| DuckMail | `duckmail` | 动态域名池 | ✅ | ✅ | ✅ | 可指定域名和前缀 |
+| Tempmail.ing | `tempmailing` | 服务端分配 | ❌ | ❌ | ❌ | 创建与收件流程简单 |
+| MinMail | `minmail` | `atminmail.com` | ❌ | ❌ | ❌ | 自动过期 |
+| Mail.tm | `mailtm` | 动态公网域名 | ✅ | ❌ | ✅ | 创建时返回 accessToken |
+| EtempMail | `etempmail` | `cross.edu.pl` `ohm.edu.pl` `usa.edu.pl` `beta.edu.pl` | ❌ | ✅ | ✅ | 支持教育域名 |
+
+## 公共接口
+
+### `GET /health`
+
+服务健康检查。
+
+### `GET /api/info`
+
+返回服务名称、版本、已启用渠道、认证状态和接口说明。
+
+### `POST /api/mail/providers/test-connections`
+
+测试所有 provider 的连通性。
+
+### `GET /api/mail/providers/stats`
+
+查看 provider 统计信息。
+
+## 受保护接口
+
+### `POST /api/mail/create`
+
+创建一个临时邮箱。
+
+请求体：
+
+```json
+{
+  "provider": "duckmail",
+  "prefix": "demo123",
+  "domain": "example-domain.tld",
+  "expirationMinutes": 1440
+}
+```
+
+字段说明：
+
+- `provider`：可选，指定渠道 ID；不传时由服务端按能力和优先级自动选择。
+- `prefix`：可选，自定义前缀。仅支持前缀的渠道会生效。
+- `domain`：可选，自定义域名。仅支持自定义域名的渠道会生效。
+- `expirationMinutes`：可选，部分 provider 可能忽略。
+
+常见创建示例：
 
 ```bash
-# 设置环境变量
-export TEMPMAILHUB_API_KEY="your_secret_api_key_here"
+# Tempmail.lol
+curl -X POST http://localhost:8787/api/mail/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"provider": "tempmaillol"}'
 
-# 或在 Cloudflare Workers 中设置
-wrangler secret put TEMPMAILHUB_API_KEY
-```
+# DuckMail（指定前缀，域名可省略）
+curl -X POST http://localhost:8787/api/mail/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"provider": "duckmail", "prefix": "demo123"}'
 
-**使用 API Key**
+# Tempmail.ing
+curl -X POST http://localhost:8787/api/mail/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"provider": "tempmailing"}'
 
-所有受保护的接口需要在请求头中包含API Key：
-
-```bash
-Authorization: Bearer your_secret_api_key_here
-```
-
-### 第二层：Provider AccessToken（邮件提供商层）
-
-某些邮件提供商（如 Mail.tm）需要额外的认证令牌。
-
-**重要说明**：
-- `accessToken` 会在**创建邮箱时自动返回**，无需单独获取
-- 目前**只有 Mail.tm 渠道需要** `accessToken`
-- `accessToken` 只能在请求体中传递，不能放在 `Authorization` 头中！
-
-```json
-{
-  "address": "test@example.com",
-  "accessToken": "provider_specific_token",  // 仅在请求体中
-  "provider": "mailtm"
-}
-```
-
-## 📋 API 接口
-
-### 🌐 公开接口（无需认证）
-
-- `GET /health` - 服务健康检查
-- `GET /api/info` - API信息
-- `POST /api/mail/providers/test-connections` - 测试所有提供者连接
-- `GET /api/mail/providers/stats` - 提供者统计信息
-
-### 🔒 受保护接口（需要API Key认证）
-
-- `POST /api/mail/create` - 创建临时邮箱
-- `POST /api/mail/list` - 获取邮件列表
-- `POST /api/mail/content` - 获取邮件详情
-
----
-
-## 1. 创建邮箱
-
-**POST** `/api/mail/create`
-
-### 基本用法
-
-```json
-{
-  "provider": "mailtm", 
-  "prefix": "test123",   // 可选
-  "expirationMinutes": 1440  // 可选
-}
-```
-
-### EtempMail 指定域名
-
-```json
-{
-  "provider": "etempmail",
-  "domain": "ohm.edu.pl"  // 可选：ohm.edu.pl, cross.edu.pl, usa.edu.pl, beta.edu.pl
-}
-```
-
-### TempMail Plus 指定域名
-
-```json
-{
-  "provider": "tempmailplus",
-  "domain": "mailto.plus"  // 可选：9个域名可选
-}
-```
-
-### 响应示例
-
-**Mail.tm 提供商（包含 accessToken）**
-```json
-{
-  "success": true,
-  "data": {
-    "address": "test123@somoj.com",
-    "domain": "somoj.com", 
-    "username": "test123",
-    "provider": "mailtm",
-    "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9...",  // ⚠️ 仅 Mail.tm 返回，请保存！
-    "expiresAt": "2025-08-10T07:19:38.098Z"
-  },
-  "timestamp": "2025-08-03T07:19:38.098Z",
-  "provider": "mailtm"
-}
-```
-
-**其他提供商（无 accessToken）**
-```json
-{
-  "success": true,
-  "data": {
-      "address": "user123@minmail.app",
-  "domain": "minmail.app",
-    "username": "user123", 
-    "provider": "minmail",
-    // 注意：其他提供商不返回 accessToken
-    "expiresAt": "2025-08-03T17:45:20.000Z"
-  },
-  "timestamp": "2025-08-03T07:45:20.000Z",
-  "provider": "minmail"
-}
-```
-
-### 测试用例
-
-```bash
-# MinMail 渠道
+# MinMail
 curl -X POST http://localhost:8787/api/mail/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"provider": "minmail"}'
 
-# TempMail Plus 渠道（支持9个域名）
-curl -X POST http://localhost:8787/api/mail/create \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"provider": "tempmailplus", "domain": "mailto.plus"}'
-
-# Mail.tm 渠道
+# Mail.tm
 curl -X POST http://localhost:8787/api/mail/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"provider": "mailtm"}'
 
-# EtempMail 渠道（支持4个教育域名）
+# EtempMail（指定域名）
 curl -X POST http://localhost:8787/api/mail/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"provider": "etempmail", "domain": "ohm.edu.pl"}'
-
-# VanishPost 渠道（服务端分配域名）
-curl -X POST http://localhost:8787/api/mail/create \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"provider": "vanishpost"}'
 ```
 
----
-
-## 2. 获取邮件列表
-
-**POST** `/api/mail/list`
-
-### 请求参数
+成功响应示例：
 
 ```json
 {
-  "address": "test123@somoj.com",
-  "provider": "mailtm",  // 可选，系统可自动推断
-  "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9...",  // 可选，mailtm 需要
-  "limit": 20,           // 可选，默认20
-  "offset": 0,           // 可选，默认0  
-  "unreadOnly": false,   // 可选，默认false
-  "since": "2025-08-03T00:00:00.000Z"  // 可选，ISO日期格式
-}
-```
-
-### Provider AccessToken 认证
-
-> **⚠️ 重要**: 
-> - 目前**只有 Mail.tm 渠道需要** `accessToken`，其他渠道可忽略此参数
-> - `accessToken` 在创建 Mail.tm 邮箱时会自动返回
-> - `accessToken` 只能在请求体中传递，不能放在 Authorization 头中
-
-**Mail.tm 邮箱访问示例**
-```json
-{
-  "address": "test123@somoj.com",
-  "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9...",  // 来自创建邮箱的响应
+  "success": true,
+  "data": {
+    "address": "demo123@sharebot.net",
+    "domain": "sharebot.net",
+    "username": "demo123",
+    "provider": "mailtm",
+    "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9..."
+  },
+  "timestamp": "2026-03-23T08:00:00.000Z",
   "provider": "mailtm"
 }
 ```
 
-**其他提供商邮箱访问示例**
+说明：
+
+- `accessToken` 仅在需要 token 的渠道中返回。
+- 客户端应优先保存 `address`、`provider`、`accessToken` 三个字段。
+
+### `POST /api/mail/list`
+
+获取指定邮箱的邮件列表。
+
+请求体：
+
 ```json
 {
-      "address": "user123@minmail.app",
-  // 无需 accessToken
-  "provider": "minmail"
+  "address": "demo123@sharebot.net",
+  "provider": "mailtm",
+  "accessToken": "provider_specific_token",
+  "limit": 20,
+  "offset": 0,
+  "unreadOnly": false,
+  "since": "2026-03-23T00:00:00.000Z"
 }
 ```
 
-### 响应示例
+字段说明：
+
+- `address`：必填，邮箱地址。
+- `provider`：可选，不传时会根据邮箱域名推断；建议在多渠道环境中显式传入。
+- `accessToken` / `token`：可选但推荐；Tempmail.lol、DuckMail、Mail.tm 使用时应传入。
+- `limit`：可选，默认 `20`。
+- `offset`：可选，默认 `0`。
+- `unreadOnly`：可选，默认 `false`。
+- `since`：可选，ISO 时间字符串。
+
+响应示例：
 
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": "msg123",
+      "id": "msg_123",
       "from": {
         "email": "sender@example.com",
         "name": "Sender Name"
       },
       "to": [
         {
-          "email": "test123@somoj.com"
+          "email": "demo123@sharebot.net"
         }
       ],
-      "subject": "Welcome Email",
-      "textContent": "Welcome to our service...",  // ⚠️ 注意：这是邮件摘要，不是完整内容
-      "receivedAt": "2025-08-03T07:25:00.000Z",
+      "subject": "Your verification code",
+      "textContent": "Your verification code is 123456",
+      "receivedAt": "2026-03-23T08:05:00.000Z",
       "isRead": false,
       "provider": "mailtm"
     }
   ],
-  "timestamp": "2025-08-03T07:30:00.000Z",
+  "timestamp": "2026-03-23T08:06:00.000Z",
   "provider": "mailtm"
 }
 ```
 
-> **📝 重要说明**：
-> - **邮件列表接口**返回的 `textContent` 是邮件摘要/预览
-> - **要获取完整邮件内容**，请使用邮件详情接口
-> - 这样设计是为了提升列表加载性能
+说明：
 
-### 测试用例
+- `textContent` 是标准化后的文本内容或摘要。
+- 如果渠道支持详情接口，建议再调用 `/api/mail/content` 获取完整正文。
 
-```bash
-curl -X POST http://localhost:8787/api/mail/list \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "address": "your-email@domain.com",
-    "limit": 10
-  }'
-```
+### `POST /api/mail/content`
 
----
+获取单封邮件详情。
 
-## 3. 获取邮件详情
-
-**POST** `/api/mail/content`
-
-> **📧 获取完整邮件内容**：包含完整的文本和HTML内容
-
-### 请求参数
+请求体：
 
 ```json
 {
-  "address": "test123@somoj.com",
-  "id": "msg123",  // 邮件ID
-  "provider": "mailtm",  // 可选
-  "accessToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9..."  // 可选
+  "address": "demo123@sharebot.net",
+  "id": "msg_123",
+  "provider": "mailtm",
+  "accessToken": "provider_specific_token"
 }
 ```
 
-### 响应示例
+字段说明：
+
+- `address`：必填，邮箱地址。
+- `id` 或 `emailId`：必填，邮件 ID。
+- `provider`：可选，建议显式传入。
+- `accessToken` / `token`：对需要 token 的渠道建议传入。
+
+响应示例：
 
 ```json
 {
   "success": true,
   "data": {
-    "id": "msg123",
+    "id": "msg_123",
     "from": {
       "email": "sender@example.com",
       "name": "Sender Name"
     },
     "to": [
       {
-        "email": "test123@somoj.com"
+        "email": "demo123@sharebot.net"
       }
     ],
-    "subject": "Welcome Email",
-    "textContent": "完整的邮件文本内容...",  // ✅ 完整内容
-    "htmlContent": "<html><body>完整的HTML内容...</body></html>",  // ✅ 完整HTML
-    "receivedAt": "2025-08-03T07:25:00.000Z",
+    "subject": "Your verification code",
+    "textContent": "Your verification code is 123456",
+    "htmlContent": "<html><body><p>Your verification code is <strong>123456</strong></p></body></html>",
+    "receivedAt": "2026-03-23T08:05:00.000Z",
     "isRead": false,
     "provider": "mailtm"
   },
-  "timestamp": "2025-08-03T07:30:00.000Z",
+  "timestamp": "2026-03-23T08:06:00.000Z",
   "provider": "mailtm"
 }
 ```
 
-### 测试用例
+## 典型接入流程
 
-```bash
-curl -X POST http://localhost:8787/api/mail/content \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "address": "your-email@domain.com",
-    "id": "email-id"
-  }'
-```
+### 流程 A：需要 accessToken 的渠道
 
----
+适用渠道：
 
-## 4. 系统接口
+- Tempmail.lol
+- DuckMail
+- Mail.tm
 
-### 健康检查
+步骤：
 
-```bash
-curl http://localhost:8787/health
-```
+1. 调用 `/api/mail/create`
+2. 保存 `address`、`provider`、`accessToken`
+3. 调用 `/api/mail/list` 时把 `accessToken` 带回去
+4. 调用 `/api/mail/content` 时同样带回 `accessToken`
 
-### API 信息
+### 流程 B：无需 accessToken 的渠道
 
-```bash
-curl http://localhost:8787/api/info
-```
+适用渠道：
 
-### 测试提供者连接
+- Tempmail.ing
+- MinMail
+- EtempMail
 
-```bash
-curl -X POST http://localhost:8787/api/mail/providers/test-connections
-```
+步骤：
 
-### 提供者统计
+1. 调用 `/api/mail/create`
+2. 保存 `address`、`provider`
+3. 调用 `/api/mail/list`
+4. 如需详情再调用 `/api/mail/content`
 
-```bash
-curl http://localhost:8787/api/mail/providers/stats
-```
+## JavaScript 示例
 
----
+```js
+const API_BASE = "http://localhost:8787";
+const API_KEY = "YOUR_API_KEY";
 
-## 📊 提供商对比
-
-| 提供商 | 域名数量 | 需要 accessToken | 域名自定义 | 说明 |
-|-------|---------|----------------|-----------|------|
-| **MinMail** | 1个 | ❌ | ❌ | minmail.app |
-| **TempMail Plus** | 9个 | ❌ | ✅ | 最多域名选择 |
-| **Mail.tm** | 1个 | ✅ | ❌ | 创建时返回，请求时必须 |
-| **EtempMail** | 4个 | ❌ | ✅ | 教育域名 |
-| **VanishPost** | 服务端分配 | ❌ | ❌ | 动态域名 |
-
-> **重要提醒**: 
-> - 所有提供商都需要通过 TempMailHub 的 API Key 认证（第一层认证）
-> - 目前**仅 Mail.tm 需要 accessToken**（第二层认证），在创建邮箱时会返回
-
----
-
-## 🚀 快速开始
-
-### 1. 环境准备
-
-```bash
-# 克隆项目
-git clone <repository-url>
-cd TempMailHub
-
-# 安装依赖
-npm install
-
-# 设置API Key（可选）
-export TEMPMAILHUB_API_KEY="your_secret_key"
-
-# 启动本地开发服务器
-npm run dev
-```
-
-### 2. 基础测试
-
-```bash
-# 健康检查
-curl http://localhost:8787/health
-
-# API信息
-curl http://localhost:8787/api/info
-
-# 测试提供者连接
-curl -X POST http://localhost:8787/api/mail/providers/test-connections
-```
-
-### 3. 完整流程测试
-
-**3.1 Mail.tm 流程（需要 accessToken）**
-```bash
-# 1. 创建 Mail.tm 邮箱
-RESPONSE=$(curl -s -X POST http://localhost:8787/api/mail/create \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"provider": "mailtm"}')
-
-# 提取邮箱地址和accessToken（重要！）
-ADDRESS=$(echo $RESPONSE | jq -r '.data.address')
-ACCESS_TOKEN=$(echo $RESPONSE | jq -r '.data.accessToken')
-
-echo "创建的邮箱: $ADDRESS"
-echo "AccessToken: $ACCESS_TOKEN"
-
-# 2. 获取邮件列表（必须包含 accessToken）
-curl -X POST http://localhost:8787/api/mail/list \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d "{
-    \"address\": \"$ADDRESS\",
-    \"accessToken\": \"$ACCESS_TOKEN\"
-  }"
-```
-
-**3.2 其他提供商流程（无需 accessToken）**
-```bash
-# 1. 创建其他提供商邮箱
-RESPONSE=$(curl -s -X POST http://localhost:8787/api/mail/create \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"provider": "minmail"}')
-
-# 只需提取邮箱地址（无 accessToken）
-ADDRESS=$(echo $RESPONSE | jq -r '.data.address')
-
-echo "创建的邮箱: $ADDRESS"
-
-# 2. 获取邮件列表（无需 accessToken）
-curl -X POST http://localhost:8787/api/mail/list \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d "{
-    \"address\": \"$ADDRESS\"
-  }"
-```
-
----
-
-## 💻 开发示例
-
-### JavaScript/Node.js
-
-```javascript
-const API_BASE = 'http://localhost:8787';
-const API_KEY = 'your_secret_api_key';
-
-// 1. 创建邮箱
-async function createEmail() {
-  const response = await fetch(`${API_BASE}/api/mail/create`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`
+async function callApi(path, body) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${API_KEY}`
     },
-    body: JSON.stringify({ provider: 'mailtm' })
+    body: JSON.stringify(body)
   });
-  const { data } = await response.json();
-  return data;
-}
 
-// 2. 获取邮件列表
-async function getEmails(address, accessToken) {
-  const payload = {
-    address,
-    limit: 20
-  };
-  
-  // 只有特定提供商需要accessToken（如mailtm）
-  if (accessToken) {
-    payload.accessToken = accessToken;
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.error?.message || data.message || "Request failed");
   }
 
-  const response = await fetch(`${API_BASE}/api/mail/list`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`  // TempMailHub API Key
-    },
-    body: JSON.stringify(payload)
-  });
-  return response.json();
+  return data.data;
 }
 
-// 3. 获取邮件详情
-async function getEmailContent(address, emailId, accessToken) {
-  const response = await fetch(`${API_BASE}/api/mail/content`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`
-    },
-    body: JSON.stringify({
-      address,
-      id: emailId,
-      accessToken
-    })
-  });
-  return response.json();
-}
+async function demo() {
+  const mailbox = await callApi("/api/mail/create", { provider: "mailtm" });
 
-// 使用示例
-async function example() {
-  // 创建邮箱（建议使用 mailtm 作为示例，因为它会返回 accessToken）
-  const email = await createEmail();
-  console.log('邮箱地址:', email.address);
-  console.log('提供商:', email.provider);
-  
-  // 检查是否有 accessToken（只有 Mail.tm 会返回）
-  if (email.accessToken) {
-    console.log('AccessToken:', email.accessToken.substring(0, 20) + '...');
-  }
-  
-  // 等待接收邮件...
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  
-  // 获取邮件列表（如果是 mailtm，会自动传递 accessToken）
-  const emails = await getEmails(email.address, email.accessToken);
-  console.log('邮件数量:', emails.data.length);
-  
-  if (emails.data.length > 0) {
-    // 获取第一封邮件的详情
-    const emailDetail = await getEmailContent(
-      email.address, 
-      emails.data[0].id, 
-      email.accessToken  // 对于非 mailtm 提供商，这个值为 undefined，不影响使用
-    );
-    console.log('邮件详情:', emailDetail.data.subject);
+  const emails = await callApi("/api/mail/list", {
+    address: mailbox.address,
+    provider: mailbox.provider,
+    accessToken: mailbox.accessToken
+  });
+
+  if (emails.length > 0) {
+    const detail = await callApi("/api/mail/content", {
+      address: mailbox.address,
+      provider: mailbox.provider,
+      id: emails[0].id,
+      accessToken: mailbox.accessToken
+    });
+    console.log(detail.subject);
   }
 }
 ```
 
-### Python
+## Python 示例
 
 ```python
 import requests
-import json
 
-API_BASE = 'http://localhost:8787'
-API_KEY = 'your_secret_api_key'
+API_BASE = "http://localhost:8787"
+API_KEY = "YOUR_API_KEY"
 
-def create_email(provider='mailtm'):
-    """创建邮箱"""
-    response = requests.post(f'{API_BASE}/api/mail/create', 
+def call_api(path, payload):
+    response = requests.post(
+        f"{API_BASE}{path}",
         headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {API_KEY}'
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}",
         },
-        json={'provider': provider}
+        json=payload,
+        timeout=30,
     )
-    return response.json()['data']
+    data = response.json()
+    if not response.ok or not data.get("success"):
+        raise RuntimeError(data.get("error", {}).get("message") or data.get("message") or "Request failed")
+    return data["data"]
 
-def get_emails(address, access_token=None, limit=20):
-    """获取邮件列表"""
-    payload = {
-        'address': address,
-        'limit': limit
-    }
-    # 只有特定提供商需要accessToken（如mailtm）
-    if access_token:
-        payload['accessToken'] = access_token
-        
-    response = requests.post(f'{API_BASE}/api/mail/list',
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {API_KEY}'  # TempMailHub API Key
-        },
-        json=payload
-    )
-    return response.json()
+mailbox = call_api("/api/mail/create", {"provider": "duckmail", "prefix": "demo123"})
+emails = call_api("/api/mail/list", {
+    "address": mailbox["address"],
+    "provider": mailbox["provider"],
+    "accessToken": mailbox.get("accessToken"),
+})
 
-def get_email_content(address, email_id, access_token=None):
-    """获取邮件详情"""
-    payload = {
-        'address': address,
-        'id': email_id
-    }
-    if access_token:
-        payload['accessToken'] = access_token
-        
-    response = requests.post(f'{API_BASE}/api/mail/content',
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {API_KEY}'
-        },
-        json=payload
-    )
-    return response.json()
-
-# 使用示例
-if __name__ == '__main__':
-    # 创建邮箱（使用 mailtm 演示 accessToken 的使用）
-    email = create_email('mailtm')
-    print(f"邮箱地址: {email['address']}")
-    print(f"提供商: {email['provider']}")
-    
-    # 检查是否有 accessToken（只有 Mail.tm 会返回）
-    if 'accessToken' in email:
-        print(f"AccessToken: {email['accessToken'][:20]}...")
-    
-    # 获取邮件列表（mailtm 需要 accessToken，其他提供商不需要）
-    emails = get_emails(email['address'], email.get('accessToken'))
-    print(f"邮件数量: {len(emails['data'])}")
-    
-    # 获取第一封邮件的详情
-    if emails['data']:
-        email_detail = get_email_content(
-            email['address'], 
-            emails['data'][0]['id'], 
-            email.get('accessToken')  # 对于非 mailtm 提供商，返回 None，不影响使用
-        )
-        print(f"邮件主题: {email_detail['data']['subject']}")
+if emails:
+    detail = call_api("/api/mail/content", {
+        "address": mailbox["address"],
+        "provider": mailbox["provider"],
+        "id": emails[0]["id"],
+        "accessToken": mailbox.get("accessToken"),
+    })
+    print(detail["subject"])
 ```
 
----
+## 常见问题
 
-## 🐛 故障排除
+### 1. 为什么创建成功后查不到收件箱？
 
-### 常见问题
+优先检查是否把 `accessToken` 一起传回来了。对 Tempmail.lol、DuckMail、Mail.tm，建议总是显式传递。
 
-1. **API Key 认证失败**
-   ```bash
-   # 检查环境变量
-   echo $TEMPMAILHUB_API_KEY
-   
-   # 确保请求头格式正确
-   Authorization: Bearer your_secret_api_key
-   ```
+### 2. `accessToken` 可以放在请求头里吗？
 
-2. **认证冲突问题**
-   ```bash
-   # ❌ 错误：将 accessToken 放在 Authorization 头中
-   curl -H "Authorization: Bearer provider_access_token" ...
-   
-   # ✅ 正确：API Key 在头中，accessToken 在请求体中
-   curl -H "Authorization: Bearer your_api_key" \
-        -d '{"address": "test@example.com", "accessToken": "provider_token"}'
-   ```
+不可以。`Authorization` 头只用于 TempMailHub 的 API Key。provider token 必须放在 JSON 请求体中。
 
-3. **端口被占用**
-   ```bash
-   # 查找占用端口的进程
-   lsof -i :8787
-   
-   # 终止进程
-   kill -9 <PID>
-   ```
+### 3. 为什么不传 `provider` 也能查邮件？
 
-4. **提供者连接失败**
-   ```bash
-   # 测试所有提供者
-   curl -X POST http://localhost:8787/api/mail/providers/test-connections
-   ```
+服务端会尝试按邮箱域名推断 provider，但为了减少歧义，生产环境建议始终显式传入 `provider`。
 
-5. **邮件获取失败**
-   - **Mail.tm 邮箱**: 确保使用创建邮箱时返回的 `accessToken`
-   - **其他提供商**: 无需 `accessToken`，请勿添加此参数
-   - 检查邮箱地址是否正确
-   - 验证提供者是否正常工作
+### 4. Tempmail.lol 为什么偶尔失败？
 
+Tempmail.lol 免费层可能触发风控或频率限制。当前服务端已加入代理兜底，但上游状态仍可能影响成功率。
 
-### 调试模式
+## 错误排查
 
-```bash
-# 启用详细日志
-DEBUG=* npm run dev
+- `401 Unauthorized`
+  - 检查 TempMailHub API Key 是否正确。
+- `No authentication token provided`
+  - 说明当前渠道需要 `accessToken`，请把创建邮箱返回的 token 带回 `/api/mail/list` 或 `/api/mail/content`。
+- `No available email provider found`
+  - 说明指定的 provider 未启用，或请求中的 provider 名称不存在。
+- `Email with ID ... not found`
+  - 说明邮件列表已变化，建议先重新调用 `/api/mail/list` 再取详情。
 
-# 查看 Wrangler 日志
-npx wrangler tail
-```
+## 仓库地址
 
----
-
-## 🚀 部署指南
-
-### Cloudflare Workers
-
-```bash
-# 设置API Key
-wrangler secret put TEMPMAILHUB_API_KEY
-
-# 部署
-wrangler deploy
-
-# 测试生产环境
-curl https://your-worker.your-subdomain.workers.dev/health
-```
-
-### Vercel
-
-```bash
-# 设置环境变量
-vercel env add TEMPMAILHUB_API_KEY
-
-# 部署
-vercel --prod
-
-# 测试
-curl https://your-project.vercel.app/health
-```
-
----
-
-## 📄 错误处理
-
-### 认证相关错误
-
-**API Key 认证错误**
-```json
-{
-  "success": false,
-  "error": "API Key required. Please provide API Key via Authorization header: \"Bearer <your-api-key>\"",
-  "timestamp": "2025-08-03T07:30:00.000Z"
-}
-```
-
-**Mail.tm AccessToken 错误**
-```json
-{
-  "success": false,
-  "error": "No authentication token provided. Please provide accessToken parameter or ensure email was created through this service.",
-  "timestamp": "2025-08-03T07:30:00.000Z",
-  "provider": "mailtm"
-}
-```
-
-### Provider不支持错误
-
-```json
-{
-  "success": false,
-  "error": "No available email provider found",
-  "timestamp": "2025-08-03T07:30:00.000Z"
-}
-```
-
-### 邮件未找到错误
-
-```json
-{
-  "success": false,
-  "error": "Email not found",
-  "timestamp": "2025-08-03T07:30:00.000Z",
-  "provider": "mailtm"
-}
-```
-
----
-
+- GitHub: `https://github.com/xiaoh2018/tempmailhub`

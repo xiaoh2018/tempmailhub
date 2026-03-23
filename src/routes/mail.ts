@@ -33,6 +33,7 @@ mail.post('/list', async (c) => {
       address: string;
       provider?: string;
       accessToken?: string;
+      token?: string;
       limit?: number;
       offset?: number;
       unreadOnly?: boolean;
@@ -50,7 +51,7 @@ mail.post('/list', async (c) => {
     const query: EmailListQuery = {
       address: body.address,
       provider: body.provider,
-      accessToken: body.accessToken || c.req.header('Authorization')?.replace('Bearer ', ''),
+      accessToken: body.accessToken || body.token || c.req.header('Authorization')?.replace('Bearer ', ''),
       limit: body.limit || 20,
       offset: body.offset || 0,
       unreadOnly: body.unreadOnly === true
@@ -82,11 +83,15 @@ mail.post('/content', async (c) => {
     const body = await c.req.json() as {
       address: string;
       emailId: string;
+      id?: string;
       provider?: string;
       accessToken?: string;
+      token?: string;
     };
     
-    if (!body.address || !body.emailId) {
+    const emailId = body.emailId || body.id || '';
+
+    if (!body.address || !emailId) {
       return c.json({
         success: false,
         error: 'Email address and email ID are required',
@@ -94,8 +99,8 @@ mail.post('/content', async (c) => {
       }, 400);
     }
 
-    const accessToken = body.accessToken || c.req.header('Authorization')?.replace('Bearer ', '');
-    const result = await mailService.getEmailContent(body.address, body.emailId, body.provider, accessToken);
+    const accessToken = body.accessToken || body.token || c.req.header('Authorization')?.replace('Bearer ', '');
+    const result = await mailService.getEmailContent(body.address, emailId, body.provider, accessToken);
     
     return c.json(result, result.success ? 200 : 404);
   } catch (error) {

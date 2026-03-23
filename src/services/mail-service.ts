@@ -207,27 +207,20 @@ export class MailService {
     
     // 根据域名推断提供者
     const domainMapping: Record<string, string> = {
+      'duckmail.sbs': 'duckmail',
       'atminmail.com': 'minmail',
-      'mailto.plus': 'tempmailplus',
-      'fexpost.com': 'tempmailplus',
-      'fexbox.org': 'tempmailplus',
-      'mailbox.in.ua': 'tempmailplus',
-      'rover.info': 'tempmailplus',
-      'chitthi.in': 'tempmailplus',
-      'fextemp.com': 'tempmailplus',
-      'any.pink': 'tempmailplus',
-      'merepost.com': 'tempmailplus',
       'somoj.com': 'mailtm',
+      'sharebot.net': 'mailtm',
       'ohm.edu.pl': 'etempmail',
       'cross.edu.pl': 'etempmail',
       'usa.edu.pl': 'etempmail',
       'beta.edu.pl': 'etempmail',
-      'genmacos.com': 'vanishpost',
-      'vexdren.org': 'vanishpost',
-      'bouldermac.com': 'vanishpost'
+      'theeditai.com': 'tempmailing'
     };
 
-    const providerName = domainMapping[domain];
+    const providerName = domainMapping[domain]
+      || (domain.endsWith('.cloudvxz.com') ? 'tempmaillol' : '')
+      || (domain.endsWith('.leadharbor.org') ? 'tempmaillol' : '');
     return providerName ? providerManager.getProvider(providerName) : null;
   }
 }

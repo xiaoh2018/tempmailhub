@@ -6,10 +6,10 @@
 
 基于 Hono 框架构建的多平台临时邮箱 API 聚合服务
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/hzruo/tempmailhub)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/hzruo/tempmailhub)
-[![Deploy on Deno](https://deno.com/button)](https://app.deno.com/new?clone=https://github.com/hzruo/tempmailhub)
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/hzruo/tempmailhub)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xiaoh2018/tempmailhub)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/xiaoh2018/tempmailhub)
+[![Deploy on Deno](https://deno.com/button)](https://app.deno.com/new?clone=https://github.com/xiaoh2018/tempmailhub)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/xiaoh2018/tempmailhub)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-4.9+-blue.svg)
@@ -20,7 +20,7 @@
 
 ## 🌟 功能特性
 
-- 🔗 **多服务商聚合**: 集成 MinMail、TempMail Plus、Mail.tm、EtempMail、VanishPost 等多个临时邮箱服务
+- 🔗 **多服务商聚合**: 集成 Tempmail.lol、DuckMail、Tempmail.ing、MinMail、Mail.tm、EtempMail 六个临时邮箱渠道
 - 🌍 **多平台部署**: 支持 Cloudflare Workers、Deno、Vercel、Node.js 等多种部署平台
 - 🔐 **双层认证**: TempMailHub API Key + Provider AccessToken 保障安全
 - 🔄 **智能重试**: 内置重试机制和错误处理
@@ -34,7 +34,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/hzruo/tempmailhub.git
+git clone https://github.com/xiaoh2018/tempmailhub.git
 cd tempmailhub
 
 # 安装依赖
@@ -63,11 +63,12 @@ open http://localhost:8787
 
 | 服务商 | 域名数量 | 需要 AccessToken | 域名自定义 | 特性 |
 |-------|---------|----------------|-----------|------|
+| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 免费层可能触发风控，内置代理兜底 |
+| **DuckMail** | 动态域名池 | ✅ | ✅ | 支持自定义前缀与动态域名 |
+| **Tempmail.ing** | 服务端分配 | ❌ | ❌ | 创建和收件流程简单 |
 | **MinMail** | 1个 | ❌ | ❌ | 自动过期、高可用 |
-| **TempMail Plus** | 9个 | ❌ | ✅ | 最多域名选择 |
-| **Mail.tm** | 1个 | ✅ | ❌ | 创建时返回 accessToken |
-| **EtempMail** | 4个 | ❌ | ✅ | 教育域名 |
-| **VanishPost** | 动态 | ❌ | ❌ | 15分钟自动过期 |
+| **Mail.tm** | 动态公网域名 | ✅ | ❌ | 创建时返回 accessToken |
+| **EtempMail** | 4个 | ❌ | ✅ | 支持教育域名 |
 
 ## 📋 基本 API 使用
 
@@ -169,11 +170,12 @@ npm test
 ### 临时邮箱服务提供商
 本项目感谢以下优秀的临时邮箱服务提供商：
 
+- [Tempmail.lol](https://tempmail.lol/) - 常用的一次性邮箱接口服务
+- [DuckMail](https://duckmail.sbs/) - 支持动态域名池和前缀的临时邮箱服务
+- [Tempmail.ing](https://tempmail.ing/) - 轻量的临时邮箱 API 服务
 - [MinMail](https://minmail.app/) - 自动过期、高可用的临时邮箱服务
-- [TempMail Plus](https://tempmail.plus/) - 支持多域名选择的临时邮箱服务  
-- [Mail.tm](https://mail.tm/) - 稳定可靠的临时邮箱API服务
+- [Mail.tm](https://mail.tm/) - 稳定可靠的临时邮箱 API 服务
 - [EtempMail](https://etempmail.com/) - 提供教育域名的临时邮箱服务
-- [VanishPost](https://vanishpost.com/) - 15分钟自动过期的临时邮箱服务
 
 > **⚠️ 重要说明**: 
 > 
@@ -187,6 +189,6 @@ npm test
 
 **如果这个项目对您有帮助，请给我们一个 ⭐**
 
-Made with ❤️ by [TempMailHub Contributors](https://github.com/hzruo/tempmailhub/contributors)
+Made with ❤️ by [TempMailHub Contributors](https://github.com/xiaoh2018/tempmailhub/contributors)
 
 </div>

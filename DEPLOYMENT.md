@@ -85,7 +85,7 @@ npm run deploy:netlify
 docker run -d -p 8787:8787 \
   -e TEMPMAILHUB_API_KEY="your-secret-key" \
   --name tempmailhub \
-  ghcr.io/hzruo/tempmailhub:latest
+  ghcr.io/xiaoh2018/tempmailhub:latest
 
 # 方法2: 通过docker-compose.yml
 # environment:

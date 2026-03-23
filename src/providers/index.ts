@@ -2,10 +2,11 @@ import type { IMailProvider, IProviderManager } from '../interfaces/mail-provide
 import type { ChannelConfiguration, ChannelHealth, ChannelStats, ChannelCapabilities } from '../types/channel.js';
 import { configManager } from '../config/index.js';
 import { MinMailProvider } from './minmail.js';
-import { TempMailPlusProvider } from './tempmail-plus.js';
 import { MailTmProvider } from './mail-tm.js';
 import { EtempMailProvider } from './etempmail.js';
-import { VanishPostProvider } from './vanishpost.js';
+import { TempmailLolProvider } from './tempmail-lol.js';
+import { DuckMailProvider } from './duckmail.js';
+import { TempmailIngProvider } from './tempmail-ing.js';
 
 /**
  * 提供者管理器实现
@@ -42,7 +43,14 @@ export class ProviderManager implements IProviderManager {
       }) : enabledProviders;
 
     // 按性能优先级排序（优先选择快速的provider）
-    const performanceOrder = ['tempmailplus', 'minmail', 'vanishpost', 'mailtm', 'etempmail'];
+    const performanceOrder = [
+      'duckmail',
+      'tempmailing',
+      'mailtm',
+      'minmail',
+      'tempmaillol',
+      'etempmail'
+    ];
     
     const sortedProviders = compatibleProviders.sort((a, b) => {
       const aIndex = performanceOrder.indexOf(a.name);
@@ -128,20 +136,22 @@ export const providerManager = new ProviderManager();
 // 初始化所有提供者
 async function initializeProviders() {
   const channelConfigs = {
+    tempmaillol: configManager.getChannelConfig('tempmaillol'),
+    duckmail: configManager.getChannelConfig('duckmail'),
+    tempmailing: configManager.getChannelConfig('tempmailing'),
     minmail: configManager.getChannelConfig('minmail'),
-    tempmailplus: configManager.getChannelConfig('tempmailplus'),
     mailtm: configManager.getChannelConfig('mailtm'),
-    etempmail: configManager.getChannelConfig('etempmail'),
-    vanishpost: configManager.getChannelConfig('vanishpost')
+    etempmail: configManager.getChannelConfig('etempmail')
   };
 
   // 注册所有提供者
   const providers = [
+    { name: 'tempmaillol', Provider: TempmailLolProvider },
+    { name: 'duckmail', Provider: DuckMailProvider },
+    { name: 'tempmailing', Provider: TempmailIngProvider },
     { name: 'minmail', Provider: MinMailProvider },
-    { name: 'tempmailplus', Provider: TempMailPlusProvider },
     { name: 'mailtm', Provider: MailTmProvider },
-    { name: 'etempmail', Provider: EtempMailProvider },
-    { name: 'vanishpost', Provider: VanishPostProvider }
+    { name: 'etempmail', Provider: EtempMailProvider }
   ];
 
   for (const { name, Provider } of providers) {
