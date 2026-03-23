@@ -277,18 +277,9 @@ export class TempmailLolProvider implements IMailProvider {
   }
 
   private async requestJson<T>(url: string): Promise<T> {
-    const directResponse = await this.tryRequest(url);
-    if (directResponse?.ok && !this.hasProviderLevelError(directResponse.data)) {
-      return directResponse.data as T;
-    }
-
-    if (!this.shouldUseProxyFallback(directResponse?.status, directResponse?.data)) {
-      const message = this.extractErrorMessage(directResponse?.data) || `Tempmail.lol API request failed: ${directResponse?.status || 0}`;
-      throw this.createError(ChannelErrorType.API_ERROR, message, directResponse?.status);
-    }
-
-    let selfHostedProxyResponse: HttpResponse<Record<string, unknown>> | null = null;
     const proxyConfig = this.getProxyConfig();
+    let directResponse: HttpResponse<Record<string, unknown>> | null = null;
+    let selfHostedProxyResponse: HttpResponse<Record<string, unknown>> | null = null;
 
     if (proxyConfig.baseUrl) {
       const proxyHeaders: Record<string, string> = {
@@ -307,6 +298,16 @@ export class TempmailLolProvider implements IMailProvider {
       if (selfHostedProxyResponse?.ok && !this.hasProviderLevelError(selfHostedProxyResponse.data)) {
         return selfHostedProxyResponse.data as T;
       }
+    } else {
+      directResponse = await this.tryRequest(url);
+      if (directResponse?.ok && !this.hasProviderLevelError(directResponse.data)) {
+        return directResponse.data as T;
+      }
+
+      if (!this.shouldUseProxyFallback(directResponse?.status, directResponse?.data)) {
+        const message = this.extractErrorMessage(directResponse?.data) || `Tempmail.lol API request failed: ${directResponse?.status || 0}`;
+        throw this.createError(ChannelErrorType.API_ERROR, message, directResponse?.status);
+      }
     }
 
     const publicProxyResponse = await this.tryRequest(`${this.publicFallbackProxyBase}${encodeURIComponent(url)}`);
@@ -314,7 +315,7 @@ export class TempmailLolProvider implements IMailProvider {
       const message = this.extractErrorMessage(selfHostedProxyResponse?.data)
         || this.extractErrorMessage(publicProxyResponse?.data)
         || this.extractErrorMessage(directResponse?.data)
-        || 'Tempmail.lol request failed via direct, self-hosted proxy, and CodeTabs fallback paths';
+        || 'Tempmail.lol request failed via self-hosted proxy/direct path and CodeTabs fallback path';
       throw this.createError(
         ChannelErrorType.API_ERROR,
         message,

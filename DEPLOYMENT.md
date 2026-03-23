@@ -123,8 +123,9 @@ TEMPMAILLOL_PROXY_SHARED_TOKEN=your-shared-token
 
 - `TEMPMAILLOL_PROXY_BASE_URL`：你的代理服务根地址
 - `TEMPMAILLOL_PROXY_SHARED_TOKEN`：可选，后端会通过 `X-Proxy-Token` 头传给代理服务
-- 后端只会在 `Tempmail.lol` 直连失败、超时、403、429 或命中风控字段时回退到代理
-- 回退顺序为：自有代理优先，`CodeTabs` 最后再尝试一次
+- 如果配置了 `TEMPMAILLOL_PROXY_BASE_URL`，后端会先走你的自有代理
+- 自有代理失败时，最后再尝试一次 `CodeTabs`
+- 如果没有配置 `TEMPMAILLOL_PROXY_BASE_URL`，才会使用“直连 -> CodeTabs”的顺序
 - 详细机制见 [TEMPMAILLOL_PROXY.md](./TEMPMAILLOL_PROXY.md)
 
 ### Cloudflare Workers

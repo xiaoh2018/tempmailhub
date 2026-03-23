@@ -6,23 +6,28 @@
 
 TempMailHub 现在的优先顺序改为：
 
-1. 先直连 `api.tempmail.lol`
-2. 仅在直连失败或命中风控时，优先回退到你自己配置的代理服务接口
-3. 如果自有代理也失败，再最后尝试一次 `CodeTabs`
+1. 如果配置了 `TEMPMAILLOL_PROXY_BASE_URL`，先走你的自有代理
+2. 自有代理不通时，最后再尝试一次 `CodeTabs`
+3. 如果没有配置 `TEMPMAILLOL_PROXY_BASE_URL`，才回退到“直连 -> CodeTabs”
 
 ## 当前后端逻辑
 
 `src/providers/tempmail-lol.ts` 中的逻辑如下：
 
-- 直连成功：直接返回结果
-- 满足以下任一条件时触发代理兜底：
+- 配置了 `TEMPMAILLOL_PROXY_BASE_URL`：
+- 先请求自有代理
+- 自有代理失败后再试 `CodeTabs`
+- 没有配置 `TEMPMAILLOL_PROXY_BASE_URL`：
+- 先直连上游
+- 直连失败后再试 `CodeTabs`
+- 以下情况会触发回退：
 - HTTP `403`
 - HTTP `429`
 - 无响应 / 网络错误
 - 响应体出现 `captcha_required`
 - 响应体出现 `banned` / `abuse` / `limit` / `required`
 
-如果没有配置自有代理地址，后端会在直连失败后直接尝试一次 `CodeTabs`。
+如果你已经配置了自有代理，后端不会优先直连 `Tempmail.lol` 上游。
 
 ## 代理服务接口约定
 
@@ -137,7 +142,7 @@ docker run -d -p 8787:8787 \
 
 - 自有代理临时异常时还能再尝试一次
 - 某些轻量部署场景下可以作为过渡方案
-- 对直连失败但不想立即中断的情况更友好
+- 对自有代理临时失败但不想立即中断的情况更友好
 
 但它仍然不适合作为长期生产主链路。
 

@@ -59,7 +59,7 @@ Authorization: Bearer YOUR_API_KEY
 
 | 提供商 | 渠道 ID | 域名 | 需要 accessToken | 支持自定义域名 | 支持自定义前缀 | 说明 |
 |-------|---------|------|------------------|----------------|----------------|------|
-| Tempmail.lol | `tempmaillol` | 服务端分配 | ✅ | ❌ | ❌ | 免费层可能触发风控，服务端自有代理优先，CodeTabs 最后兜底 |
+| Tempmail.lol | `tempmaillol` | 服务端分配 | ✅ | ❌ | ❌ | 优先走 `TEMPMAILLOL_PROXY_BASE_URL`，不通时再试 CodeTabs |
 | DuckMail | `duckmail` | 动态域名池 | ✅ | ✅ | ✅ | 可指定域名和前缀 |
 | Tempmail.ing | `tempmailing` | 服务端分配 | ❌ | ❌ | ❌ | 创建与收件流程简单 |
 | MinMail | `minmail` | `atminmail.com` | ❌ | ❌ | ❌ | 自动过期 |

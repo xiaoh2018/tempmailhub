@@ -64,7 +64,7 @@ open http://localhost:8787
 
 | 服务商 | 域名数量 | 需要 AccessToken | 域名自定义 | 特性 |
 |-------|---------|----------------|-----------|------|
-| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 免费层可能触发风控，自有代理优先，CodeTabs 最后兜底 |
+| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 优先走 `TEMPMAILLOL_PROXY_BASE_URL`，不通时再试 CodeTabs |
 | **DuckMail** | 动态域名池 | ✅ | ✅ | 支持自定义前缀与动态域名 |
 | **Tempmail.ing** | 服务端分配 | ❌ | ❌ | 创建和收件流程简单 |
 | **MinMail** | 1个 | ❌ | ❌ | 自动过期、高可用 |
