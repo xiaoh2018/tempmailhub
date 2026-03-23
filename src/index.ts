@@ -10,6 +10,7 @@ import { prettyJSON } from 'hono/pretty-json';
 import { initializeProviders } from './providers/index.js';
 import { mailService } from './services/mail-service.js';
 import { createApiKeyAuthWithCustomError, getAuthConfig } from './middleware/api-auth.js';
+import { setRuntimeBindings } from './runtime/env-store.js';
 
 // 基础类型定义
 interface AppResponse {
@@ -27,6 +28,12 @@ const app = new Hono();
 // 全局中间件
 app.use('*', cors());
 app.use('*', logger());
+app.use('*', async (c, next) => {
+  if (c.env && typeof c.env === 'object') {
+    setRuntimeBindings(c.env as Record<string, unknown>);
+  }
+  await next();
+});
 app.use('/api/*', prettyJSON());
 
 // 创建API Key验证中间件

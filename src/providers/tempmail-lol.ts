@@ -15,8 +15,10 @@ import type {
 } from '../types/channel.js';
 import { ChannelErrorType, ChannelStatus } from '../types/channel.js';
 import { httpClient } from '../utils/http-client.js';
+import type { HttpResponse } from '../utils/http-client.js';
 import { generateId } from '../utils/helpers.js';
 import { normalizeGenericEmailMessage } from './generic-provider-utils.js';
+import { getRuntimeEnv } from '../runtime/env-store.js';
 
 interface TempmailLolCreateResponse {
   address: string;
@@ -47,7 +49,7 @@ export class TempmailLolProvider implements IMailProvider {
   };
 
   private readonly baseUrl = 'https://api.tempmail.lol/v2';
-  private readonly fallbackProxyBase = 'https://api.codetabs.com/v1/proxy/?quest=';
+  private readonly publicFallbackProxyBase = 'https://api.codetabs.com/v1/proxy/?quest=';
   private readonly tokenStore = new Map<string, string>();
 
   private stats: ChannelStats = {
@@ -285,22 +287,50 @@ export class TempmailLolProvider implements IMailProvider {
       throw this.createError(ChannelErrorType.API_ERROR, message, directResponse?.status);
     }
 
-    const proxyResponse = await this.tryRequest(`${this.fallbackProxyBase}${encodeURIComponent(url)}`);
-    if (!proxyResponse?.ok || this.hasProviderLevelError(proxyResponse.data)) {
-      const message = this.extractErrorMessage(proxyResponse?.data)
-        || this.extractErrorMessage(directResponse?.data)
-        || 'Tempmail.lol request failed via direct and proxy paths';
-      throw this.createError(ChannelErrorType.API_ERROR, message, proxyResponse?.status || directResponse?.status);
+    let selfHostedProxyResponse: HttpResponse<Record<string, unknown>> | null = null;
+    const proxyConfig = this.getProxyConfig();
+
+    if (proxyConfig.baseUrl) {
+      const proxyHeaders: Record<string, string> = {
+        'x-tempmailhub-source': 'tempmaillol'
+      };
+
+      if (proxyConfig.sharedToken) {
+        proxyHeaders['x-proxy-token'] = proxyConfig.sharedToken;
+      }
+
+      selfHostedProxyResponse = await this.tryRequest(
+        this.buildProxyUrl(proxyConfig.baseUrl, url),
+        proxyHeaders
+      );
+
+      if (selfHostedProxyResponse?.ok && !this.hasProviderLevelError(selfHostedProxyResponse.data)) {
+        return selfHostedProxyResponse.data as T;
+      }
     }
 
-    return proxyResponse.data as T;
+    const publicProxyResponse = await this.tryRequest(`${this.publicFallbackProxyBase}${encodeURIComponent(url)}`);
+    if (!publicProxyResponse?.ok || this.hasProviderLevelError(publicProxyResponse.data)) {
+      const message = this.extractErrorMessage(selfHostedProxyResponse?.data)
+        || this.extractErrorMessage(publicProxyResponse?.data)
+        || this.extractErrorMessage(directResponse?.data)
+        || 'Tempmail.lol request failed via direct, self-hosted proxy, and CodeTabs fallback paths';
+      throw this.createError(
+        ChannelErrorType.API_ERROR,
+        message,
+        selfHostedProxyResponse?.status || publicProxyResponse?.status || directResponse?.status
+      );
+    }
+
+    return publicProxyResponse.data as T;
   }
 
-  private async tryRequest(url: string) {
+  private async tryRequest(url: string, extraHeaders?: Record<string, string>) {
     try {
       return await httpClient.get<Record<string, unknown>>(url, {
         headers: {
-          accept: 'application/json'
+          accept: 'application/json',
+          ...extraHeaders
         },
         timeout: this.config.timeout,
         retries: 0
@@ -344,6 +374,22 @@ export class TempmailLolProvider implements IMailProvider {
       .map(value => String(value))
       .join(' ')
       .trim();
+  }
+
+  private getProxyConfig(): { baseUrl?: string; sharedToken?: string } {
+    const baseUrl = getRuntimeEnv('TEMPMAILLOL_PROXY_BASE_URL');
+    const sharedToken = getRuntimeEnv('TEMPMAILLOL_PROXY_SHARED_TOKEN');
+
+    return {
+      baseUrl,
+      sharedToken
+    };
+  }
+
+  private buildProxyUrl(proxyBaseUrl: string, upstreamUrl: string): string {
+    const normalizedBase = proxyBaseUrl.endsWith('/') ? proxyBaseUrl : `${proxyBaseUrl}/`;
+    const upstream = new URL(upstreamUrl);
+    return new URL(`${upstream.pathname.replace(/^\/+/, '')}${upstream.search}`, normalizedBase).toString();
   }
 
   private createError(type: ChannelErrorType, message: string, statusCode?: number): ChannelError {

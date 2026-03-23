@@ -58,12 +58,13 @@ open http://localhost:8787
 | [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) | 📚 **完整API文档** - 接口说明、使用示例、测试方法 |
 | [API_SECURITY.md](./API_SECURITY.md) | 🔐 **安全配置** - API Key 认证详细配置 |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | 🚀 **部署指南** - 多平台部署详细说明 |
+| [TEMPMAILLOL_PROXY.md](./TEMPMAILLOL_PROXY.md) | 🛰️ **Tempmail.lol 代理机制** - 自有代理接口配置与回退说明 |
 
 ## 🎯 支持的服务商
 
 | 服务商 | 域名数量 | 需要 AccessToken | 域名自定义 | 特性 |
 |-------|---------|----------------|-----------|------|
-| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 免费层可能触发风控，内置代理兜底 |
+| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 免费层可能触发风控，自有代理优先，CodeTabs 最后兜底 |
 | **DuckMail** | 动态域名池 | ✅ | ✅ | 支持自定义前缀与动态域名 |
 | **Tempmail.ing** | 服务端分配 | ❌ | ❌ | 创建和收件流程简单 |
 | **MinMail** | 1个 | ❌ | ❌ | 自动过期、高可用 |

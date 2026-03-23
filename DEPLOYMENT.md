@@ -110,6 +110,41 @@ vercel env pull  # 自动拉取线上环境变量
 vercel dev
 ```
 
+## 🛰️ Tempmail.lol 自有代理配置
+
+如果你希望在 `Tempmail.lol` 直连失败时走自有代理服务，请配置以下环境变量：
+
+```bash
+TEMPMAILLOL_PROXY_BASE_URL=https://proxy.example.com
+TEMPMAILLOL_PROXY_SHARED_TOKEN=your-shared-token
+```
+
+说明：
+
+- `TEMPMAILLOL_PROXY_BASE_URL`：你的代理服务根地址
+- `TEMPMAILLOL_PROXY_SHARED_TOKEN`：可选，后端会通过 `X-Proxy-Token` 头传给代理服务
+- 后端只会在 `Tempmail.lol` 直连失败、超时、403、429 或命中风控字段时回退到代理
+- 回退顺序为：自有代理优先，`CodeTabs` 最后再尝试一次
+- 详细机制见 [TEMPMAILLOL_PROXY.md](./TEMPMAILLOL_PROXY.md)
+
+### Cloudflare Workers
+
+建议在平台变量中配置：
+
+- `TEMPMAILLOL_PROXY_BASE_URL`
+- `TEMPMAILLOL_PROXY_SHARED_TOKEN`
+
+### Docker
+
+```bash
+docker run -d -p 8787:8787 \
+  -e TEMPMAILHUB_API_KEY="your-secret-key" \
+  -e TEMPMAILLOL_PROXY_BASE_URL="https://proxy.example.com" \
+  -e TEMPMAILLOL_PROXY_SHARED_TOKEN="your-shared-token" \
+  --name tempmailhub \
+  ghcr.io/xiaoh2018/tempmailhub:latest
+```
+
 ## 📊 平台对比
 
 | 平台 | 设置方式 | 访问方式 | 特性 |
