@@ -67,7 +67,7 @@ open http://localhost:8787
 | **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 优先走 `TEMPMAILLOL_PROXY_BASE_URL`，不通时再试 CodeTabs |
 | **DuckMail** | 动态域名池 | ✅ | ✅ | 支持自定义前缀与动态域名 |
 | **Tempmail.ing** | 服务端分配 | ❌ | ❌ | 创建和收件流程简单 |
-| **MinMail** | 1个 | ❌ | ❌ | 自动过期、高可用 |
+| **MinMail** | 1个 | ✅ | ❌ | 创建返回 visitor-id accessToken，收件箱读取时应显式带回 |
 | **Mail.tm** | 动态公网域名 | ✅ | ❌ | 创建时返回 accessToken |
 | **EtempMail** | 4个 | ❌ | ✅ | 支持教育域名 |
 | **YYDS Mail** | 动态公网域名池 | ✅ | ❌ | 创建返回 accessToken，支持消息详情接口 |

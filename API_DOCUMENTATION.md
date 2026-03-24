@@ -36,6 +36,7 @@ Authorization: Bearer YOUR_API_KEY
 
 - Tempmail.lol
 - DuckMail
+- MinMail
 - Mail.tm
 - YYDS Mail
 
@@ -64,7 +65,7 @@ Authorization: Bearer YOUR_API_KEY
 | Tempmail.lol | `tempmaillol` | 服务端分配 | ✅ | ❌ | ❌ | 优先走 `TEMPMAILLOL_PROXY_BASE_URL`，不通时再试 CodeTabs |
 | DuckMail | `duckmail` | 动态域名池 | ✅ | ✅ | ✅ | 可指定域名和前缀 |
 | Tempmail.ing | `tempmailing` | 服务端分配 | ❌ | ❌ | ❌ | 创建与收件流程简单 |
-| MinMail | `minmail` | `atminmail.com` | ❌ | ❌ | ❌ | 自动过期 |
+| MinMail | `minmail` | `atminmail.com` | ✅ | ❌ | ❌ | 创建返回 visitor-id accessToken |
 | Mail.tm | `mailtm` | 动态公网域名 | ✅ | ❌ | ✅ | 创建时返回 accessToken |
 | EtempMail | `etempmail` | `cross.edu.pl` `ohm.edu.pl` `usa.edu.pl` `beta.edu.pl` | ❌ | ✅ | ✅ | 支持教育域名 |
 | YYDS Mail | `yydsmail` | 动态公网域名池 | ✅ | ❌ | ❌ | 创建返回 accessToken，支持消息详情接口 |
@@ -201,7 +202,7 @@ curl -X POST http://localhost:8787/api/mail/create \
 
 - `address`：必填，邮箱地址。
 - `provider`：可选，不传时会根据邮箱域名推断；建议在多渠道环境中显式传入。`yydsmail` 由于域名池动态变化，更推荐显式传值。
-- `accessToken` / `token`：可选但推荐；Tempmail.lol、DuckMail、Mail.tm、YYDS Mail 使用时应传入。
+- `accessToken` / `token`：可选但推荐；Tempmail.lol、DuckMail、MinMail、Mail.tm、YYDS Mail 使用时应传入。
 - `limit`：可选，默认 `20`。
 - `offset`：可选，默认 `0`。
 - `unreadOnly`：可选，默认 `false`。
@@ -299,6 +300,7 @@ curl -X POST http://localhost:8787/api/mail/create \
 
 - Tempmail.lol
 - DuckMail
+- MinMail
 - Mail.tm
 - YYDS Mail
 
@@ -314,7 +316,6 @@ curl -X POST http://localhost:8787/api/mail/create \
 适用渠道：
 
 - Tempmail.ing
-- MinMail
 - EtempMail
 
 步骤：
@@ -413,7 +414,7 @@ if emails:
 
 ### 1. 为什么创建成功后查不到收件箱？
 
-优先检查是否把 `accessToken` 一起传回来了。对 Tempmail.lol、DuckMail、Mail.tm、YYDS Mail，建议总是显式传递。
+优先检查是否把 `accessToken` 一起传回来了。对 Tempmail.lol、DuckMail、MinMail、Mail.tm、YYDS Mail，建议总是显式传递。
 
 ### 2. `accessToken` 可以放在请求头里吗？
 

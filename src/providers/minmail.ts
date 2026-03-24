@@ -17,7 +17,7 @@ import type {
 } from '../types/channel.js';
 import { ChannelStatus, ChannelErrorType } from '../types/channel.js';
 import { httpClient } from '../utils/http-client.js';
-import { generateId, parseDate, stripHtml, getEmailPreview } from '../utils/helpers.js';
+import { generateId, generateRandomString, parseDate, stripHtml } from '../utils/helpers.js';
 
 /**
  * MinMail API 响应类型
@@ -69,7 +69,7 @@ export class MinMailProvider implements IMailProvider {
     requestsToday: 0
   };
 
-  private visitorId: string = '';
+  private readonly tokenStore = new Map<string, string>();
   private connectionTested = false;
   private connectionTestResult: { success: boolean; error?: string; testedAt: Date } | null = null;
 
@@ -77,7 +77,6 @@ export class MinMailProvider implements IMailProvider {
 
   async initialize(config: ChannelConfiguration): Promise<void> {
     // 生成或获取 visitor-id
-    this.visitorId = generateId();
     console.log('MinMail provider initialized (connection will be tested on first use)');
   }
 
@@ -128,14 +127,16 @@ export class MinMailProvider implements IMailProvider {
         part: 'main'
       });
 
+      const visitorId = this.createVisitorId();
+
       const response = await httpClient.get<MinMailAddressResponse>(
         `${url}?${params}`,
         {
           headers: {
             'accept': '*/*',
             'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'referer': 'https://minmail.app/',
-            'visitor-id': this.visitorId,
+            'referer': 'https://minmail.app/cn',
+            'visitor-id': visitorId,
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
           },
           timeout: this.config.timeout,
@@ -161,13 +162,15 @@ export class MinMailProvider implements IMailProvider {
 
       const [username, domain] = data.address.split('@');
       const expiresAt = new Date(Date.now() + data.remainingTime * 1000);
+      this.tokenStore.set(data.address, visitorId);
 
       const result: CreateEmailResponse = {
         address: data.address,
         domain,
         username,
         expiresAt,
-        provider: this.name
+        provider: this.name,
+        accessToken: visitorId
       };
 
       this.updateStats('success', Date.now() - startTime);
@@ -205,6 +208,14 @@ export class MinMailProvider implements IMailProvider {
     
     try {
       this.updateStats('request');
+      const visitorId = query.accessToken || this.tokenStore.get(query.address);
+      if (!visitorId) {
+        throw this.createError(
+          ChannelErrorType.AUTHENTICATION_ERROR,
+          'MinMail requires a visitor-id token for inbox access'
+        );
+      }
+      this.tokenStore.set(query.address, visitorId);
 
       const url = 'https://minmail.app/api/mail/list';
       const params = new URLSearchParams({
@@ -217,8 +228,8 @@ export class MinMailProvider implements IMailProvider {
           headers: {
             'accept': '*/*',
             'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'referer': 'https://minmail.app/',
-            'visitor-id': this.visitorId,
+            'referer': 'https://minmail.app/cn',
+            'visitor-id': visitorId,
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
           },
           timeout: this.config.timeout,
@@ -283,7 +294,7 @@ export class MinMailProvider implements IMailProvider {
 
   async getEmailContent(emailAddress: string, emailId: string, accessToken?: string): Promise<ChannelResponse<EmailMessage>> {
     // MinMail 的列表接口已经包含完整内容，所以直接从列表中查找
-    const emailsResponse = await this.getEmails({ address: emailAddress });
+    const emailsResponse = await this.getEmails({ address: emailAddress, accessToken });
     
     if (!emailsResponse.success) {
       return {
@@ -348,16 +359,23 @@ export class MinMailProvider implements IMailProvider {
     const startTime = Date.now();
     
     try {
-      const response = await httpClient.get('https://minmail.app/api/mail/address?refresh=true&expire=1&part=main', {
+      const visitorId = this.createVisitorId();
+      const response = await httpClient.get<MinMailAddressResponse>('https://minmail.app/api/mail/address?refresh=true&expire=1&part=main', {
         headers: {
-          'visitor-id': this.visitorId
+          'accept': '*/*',
+          'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+          'referer': 'https://minmail.app/cn',
+          'visitor-id': visitorId,
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
         },
         timeout: this.config.timeout
       });
 
+      const success = Boolean(response.ok && response.data?.address);
+
       return {
-        success: response.ok,
-        data: response.ok,
+        success,
+        data: success,
         metadata: {
           provider: this.name,
           responseTime: Date.now() - startTime,
@@ -378,6 +396,20 @@ export class MinMailProvider implements IMailProvider {
         }
       };
     }
+  }
+
+  private createVisitorId(): string {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+
+    return [
+      generateRandomString(8),
+      generateRandomString(4),
+      generateRandomString(4),
+      generateRandomString(4),
+      generateRandomString(12)
+    ].join('-');
   }
 
   private mapToEmailMessage(msg: MinMailMessage, emailAddress: string): EmailMessage {
