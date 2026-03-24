@@ -71,6 +71,16 @@ export const defaultConfig: Config = {
         requests: 20,
         window: 60
       }
+    },
+    gptmail: {
+      enabled: true,
+      priority: 8,
+      timeout: 15000,
+      retries: 1,
+      rateLimit: {
+        requests: 12,
+        window: 60
+      }
     }
   },
   server: {

@@ -7,6 +7,8 @@ export interface HttpRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
   body?: string | ArrayBuffer | FormData;
+  cache?: RequestCache;
+  redirect?: RequestRedirect;
   timeout?: number;
   retries?: number;
   retryDelay?: number;
@@ -34,6 +36,8 @@ export class HttpClient {
       method = 'GET',
       headers = {},
       body,
+      cache = 'no-store',
+      redirect = 'follow',
       timeout = this.defaultTimeout,
       retries = this.defaultRetries,
       retryDelay = this.defaultRetryDelay
@@ -50,9 +54,13 @@ export class HttpClient {
           method,
           headers: {
             'User-Agent': 'TempMailHub/1.0.0',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
             ...headers
           },
           body,
+          cache,
+          redirect,
           signal: controller.signal
         });
 

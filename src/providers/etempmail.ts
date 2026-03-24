@@ -1,27 +1,22 @@
 import type { IMailProvider } from '../interfaces/mail-provider.js';
 import type {
-  EmailAddress,
-  EmailMessage,
   CreateEmailRequest,
   CreateEmailResponse,
   EmailListQuery,
-  EmailContact
+  EmailMessage
 } from '../types/email.js';
 import type {
-  ChannelConfiguration,
-  ChannelHealth,
-  ChannelStats,
-  ChannelResponse,
   ChannelCapabilities,
-  ChannelError
+  ChannelConfiguration,
+  ChannelError,
+  ChannelHealth,
+  ChannelResponse,
+  ChannelStats
 } from '../types/channel.js';
-import { ChannelStatus, ChannelErrorType } from '../types/channel.js';
+import { ChannelErrorType, ChannelStatus } from '../types/channel.js';
 import { httpClient } from '../utils/http-client.js';
 import { generateId, parseDate, stripHtml } from '../utils/helpers.js';
 
-/**
- * EtempMail API 响应类型
- */
 interface EtempMailAddressResponse {
   id: string;
   address: string;
@@ -36,17 +31,20 @@ interface EtempMailInboxMessage {
   body: string;
 }
 
-/**
- * EtempMail 提供者实现
- */
+interface EtempMailMailboxState {
+  recoveryKey?: string;
+  sessionId?: string;
+  lisansimo?: string;
+}
+
 export class EtempMailProvider implements IMailProvider {
   readonly name = 'etempmail';
-  
+
   readonly capabilities: ChannelCapabilities = {
     createEmail: true,
     listEmails: true,
     getEmailContent: true,
-    customDomains: true, // 支持指定域名（通过 changeEmailAddress 接口）
+    customDomains: true,
     customPrefix: false,
     emailExpiration: true,
     realTimeUpdates: false,
@@ -62,66 +60,40 @@ export class EtempMailProvider implements IMailProvider {
     requestsToday: 0
   };
 
-  private baseUrl = 'https://etempmail.com';
-  private sessionId: string = '';
-  
-  // 支持的域名列表和对应的ID
-  private readonly domains = [
-    'cross.edu.pl',
-    'ohm.edu.pl', 
-    'usa.edu.pl',
-    'beta.edu.pl'
-  ];
+  private readonly baseUrl = 'https://etempmail.com';
+  private sessionId = '';
+  private lisansimo = '';
+  private readonly mailboxState = new Map<string, EtempMailMailboxState>();
 
-  // 域名ID映射表
   private readonly domainIdMapping: Record<string, string> = {
     'ohm.edu.pl': '21',
-    'cross.edu.pl': '20', 
+    'cross.edu.pl': '20',
     'usa.edu.pl': '19',
     'beta.edu.pl': '18'
   };
 
   constructor(public readonly config: ChannelConfiguration) {}
 
-  async initialize(config: ChannelConfiguration): Promise<void> {
-    console.log('EtempMail provider initialized (server time and connection will be tested on first use)');
+  async initialize(_config: ChannelConfiguration): Promise<void> {
+    console.log('EtempMail provider initialized (real session cookies will be resolved on first use)');
   }
 
   async createEmail(request: CreateEmailRequest): Promise<ChannelResponse<CreateEmailResponse>> {
     const startTime = Date.now();
-    
+
     try {
       this.updateStats('request');
 
-      // 确保有会话
-      if (!this.sessionId) {
-        await this.getServerTime();
-      }
-
-      // 处理域名选择
-      if (request.domain && this.domainIdMapping[request.domain]) {
-        // 用户指定了域名
-        await this.changeEmailAddress(this.domainIdMapping[request.domain]);
-      } else if (!request.domain) {
-        // 用户没有指定域名，随机选择一个
-        const domainIds = Object.values(this.domainIdMapping);
-        const randomId = domainIds[Math.floor(Math.random() * domainIds.length)];
-        await this.changeEmailAddress(randomId);
-      }
-
+      const mailboxSession = await this.bootstrapMailboxSession(request.domain);
       const response = await httpClient.post<EtempMailAddressResponse>(
         `${this.baseUrl}/getEmailAddress`,
         '',
         {
           headers: {
-            'accept': '*/*',
-            'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'content-length': '0',
-            'origin': this.baseUrl,
-            'referer': `${this.baseUrl}/`,
-            'x-requested-with': 'XMLHttpRequest',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-            'cookie': `ci_session=${this.sessionId}`
+            ...this.buildBrowserHeaders('/'),
+            ...(this.buildSessionCookieHeader(mailboxSession)
+              ? { cookie: this.buildSessionCookieHeader(mailboxSession) }
+              : {})
           },
           timeout: this.config.timeout,
           retries: this.config.retries
@@ -137,16 +109,19 @@ export class EtempMailProvider implements IMailProvider {
       }
 
       const data = response.data;
-      if (!data.address) {
+      if (!data?.address) {
         throw this.createError(
           ChannelErrorType.API_ERROR,
           'Invalid response from EtempMail API: missing address'
         );
       }
 
+      const nextSession = this.extractMailboxStateFromHeaders(response.headers, mailboxSession);
+      this.applySessionState(nextSession);
+
       const [username, domain] = data.address.split('@');
-      const creationTime = parseInt(data.creation_time) * 1000; // 转换为毫秒
-      const expiresAt = new Date(creationTime + 15 * 60 * 1000); // 15分钟后过期
+      const creationTime = parseInt(String(data.creation_time || '0'), 10) * 1000;
+      const expiresAt = new Date(creationTime + 15 * 60 * 1000);
 
       const result: CreateEmailResponse = {
         address: data.address,
@@ -154,8 +129,19 @@ export class EtempMailProvider implements IMailProvider {
         username,
         expiresAt,
         provider: this.name,
-        recoveryKey: data.recover_key
+        recoveryKey: data.recover_key,
+        accessToken: this.buildMailboxAccessToken(
+          data.recover_key || '',
+          nextSession.sessionId || '',
+          nextSession.lisansimo || ''
+        )
       };
+
+      this.rememberMailboxState(data.address, {
+        recoveryKey: data.recover_key || '',
+        sessionId: nextSession.sessionId || '',
+        lisansimo: nextSession.lisansimo || ''
+      });
 
       this.updateStats('success', Date.now() - startTime);
 
@@ -168,16 +154,14 @@ export class EtempMailProvider implements IMailProvider {
           requestId: generateId()
         }
       };
-
     } catch (error) {
       this.updateStats('error', Date.now() - startTime);
-      
+
       return {
         success: false,
-        error: error instanceof Error ? error as ChannelError : this.createError(
-          ChannelErrorType.UNKNOWN_ERROR,
-          error instanceof Error ? error.message : String(error)
-        ),
+        error: error instanceof Error
+          ? error as ChannelError
+          : this.createError(ChannelErrorType.UNKNOWN_ERROR, String(error)),
         metadata: {
           provider: this.name,
           responseTime: Date.now() - startTime,
@@ -189,28 +173,20 @@ export class EtempMailProvider implements IMailProvider {
 
   async getEmails(query: EmailListQuery): Promise<ChannelResponse<EmailMessage[]>> {
     const startTime = Date.now();
-    
+
     try {
       this.updateStats('request');
 
-      // 确保有会话
-      if (!this.sessionId) {
-        await this.getServerTime();
-      }
-
+      const mailboxSession = await this.ensureMailboxSession(query.address, query.accessToken);
       const response = await httpClient.post<EtempMailInboxMessage[]>(
         `${this.baseUrl}/getInbox`,
         '',
         {
           headers: {
-            'accept': '*/*',
-            'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'content-length': '0',
-            'origin': this.baseUrl,
-            'referer': `${this.baseUrl}/`,
-            'x-requested-with': 'XMLHttpRequest',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-            'cookie': `ci_session=${this.sessionId}`
+            ...this.buildBrowserHeaders('/'),
+            ...(this.buildSessionCookieHeader(mailboxSession)
+              ? { cookie: this.buildSessionCookieHeader(mailboxSession) }
+              : {})
           },
           timeout: this.config.timeout,
           retries: this.config.retries
@@ -225,19 +201,25 @@ export class EtempMailProvider implements IMailProvider {
         );
       }
 
-      const messages = Array.isArray(response.data) ? response.data : [];
-      const emails: EmailMessage[] = messages.map((msg, index) => this.mapToEmailMessage(msg, query.address, index));
+      const nextSession = this.extractMailboxStateFromHeaders(response.headers, mailboxSession);
+      this.applySessionState(nextSession);
+      this.rememberMailboxState(query.address, {
+        recoveryKey: mailboxSession.recoveryKey || '',
+        sessionId: nextSession.sessionId || mailboxSession.sessionId || '',
+        lisansimo: nextSession.lisansimo || mailboxSession.lisansimo || ''
+      });
 
-      // 应用过滤器
+      const messages = Array.isArray(response.data) ? response.data : [];
+      const emails = messages.map((message, index) => this.mapToEmailMessage(message, query.address, index));
+
       let filteredEmails = emails;
       if (query.unreadOnly) {
-        filteredEmails = filteredEmails.filter(email => !email.isRead);
+        filteredEmails = filteredEmails.filter((email) => !email.isRead);
       }
       if (query.since) {
-        filteredEmails = filteredEmails.filter(email => email.receivedAt >= query.since!);
+        filteredEmails = filteredEmails.filter((email) => email.receivedAt >= query.since!);
       }
 
-      // 应用分页
       const limit = query.limit || 20;
       const offset = query.offset || 0;
       const paginatedEmails = filteredEmails.slice(offset, offset + limit);
@@ -253,16 +235,14 @@ export class EtempMailProvider implements IMailProvider {
           requestId: generateId()
         }
       };
-
     } catch (error) {
       this.updateStats('error', Date.now() - startTime);
-      
+
       return {
         success: false,
-        error: error instanceof Error ? error as ChannelError : this.createError(
-          ChannelErrorType.UNKNOWN_ERROR,
-          error instanceof Error ? error.message : String(error)
-        ),
+        error: error instanceof Error
+          ? error as ChannelError
+          : this.createError(ChannelErrorType.UNKNOWN_ERROR, String(error)),
         metadata: {
           provider: this.name,
           responseTime: Date.now() - startTime,
@@ -273,9 +253,11 @@ export class EtempMailProvider implements IMailProvider {
   }
 
   async getEmailContent(emailAddress: string, emailId: string, accessToken?: string): Promise<ChannelResponse<EmailMessage>> {
-    // EtempMail 的 getInbox 接口已经包含完整内容，所以直接从列表中查找
-    const emailsResponse = await this.getEmails({ address: emailAddress });
-    
+    const emailsResponse = await this.getEmails({
+      address: emailAddress,
+      accessToken
+    });
+
     if (!emailsResponse.success) {
       return {
         success: false,
@@ -284,7 +266,7 @@ export class EtempMailProvider implements IMailProvider {
       };
     }
 
-    const email = emailsResponse.data?.find(msg => msg.id === emailId);
+    const email = emailsResponse.data?.find((message) => message.id === emailId);
     if (!email) {
       return {
         success: false,
@@ -308,21 +290,21 @@ export class EtempMailProvider implements IMailProvider {
     };
   }
 
-
-
   async getHealth(): Promise<ChannelHealth> {
     const testResult = await this.testConnection();
-    
+
     return {
       status: testResult.success ? ChannelStatus.ACTIVE : ChannelStatus.ERROR,
       lastChecked: new Date(),
       responseTime: testResult.metadata.responseTime,
       errorCount: this.stats.failedRequests,
-      successRate: this.stats.totalRequests > 0 ? 
-        (this.stats.successfulRequests / this.stats.totalRequests) * 100 : 0,
+      successRate: this.stats.totalRequests > 0
+        ? (this.stats.successfulRequests / this.stats.totalRequests) * 100
+        : 0,
       lastError: testResult.error?.message,
-      uptime: this.stats.totalRequests > 0 ? 
-        (this.stats.successfulRequests / this.stats.totalRequests) * 100 : 100
+      uptime: this.stats.totalRequests > 0
+        ? (this.stats.successfulRequests / this.stats.totalRequests) * 100
+        : 100
     };
   }
 
@@ -332,14 +314,10 @@ export class EtempMailProvider implements IMailProvider {
 
   async testConnection(): Promise<ChannelResponse<boolean>> {
     const startTime = Date.now();
-    
+
     try {
       const response = await httpClient.post(`${this.baseUrl}/getServerTime`, '', {
-        headers: {
-          'content-length': '0',
-          'origin': this.baseUrl,
-          'referer': `${this.baseUrl}/`
-        },
+        headers: this.buildBrowserHeaders('/'),
         timeout: this.config.timeout
       });
 
@@ -368,103 +346,264 @@ export class EtempMailProvider implements IMailProvider {
     }
   }
 
-  private async getServerTime(): Promise<void> {
-    try {
-      const response = await httpClient.post(`${this.baseUrl}/getServerTime`, '', {
-        headers: {
-          'accept': '*/*',
-          'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-          'content-length': '0',
-          'origin': this.baseUrl,
-          'referer': `${this.baseUrl}/`,
-          'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          'sec-gpc': '1',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-          'x-requested-with': 'XMLHttpRequest'
-        }
-      });
-
-      if (response.ok) {
-        // 从 Set-Cookie 头中提取会话ID，要包含完整的cookie信息
-        const cookies = response.headers.get('set-cookie');
-        if (cookies) {
-          const sessionMatch = cookies.match(/ci_session=([^;]+)/);
-          if (sessionMatch) {
-            this.sessionId = sessionMatch[1];
-          }
-        }
-        
-        // 如果没有获取到session，生成一个假的
-        if (!this.sessionId) {
-          this.sessionId = '51sutdevslriv5ft7mdqkats3a9l5bd6'; // 示例session
-        }
-      }
-    } catch (error) {
-      // 使用默认会话ID
-      this.sessionId = '51sutdevslriv5ft7mdqkats3a9l5bd6';
-    }
+  private buildBrowserHeaders(refererPath = '/', extraHeaders: Record<string, string> = {}): Record<string, string> {
+    return {
+      accept: '*/*',
+      'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+      origin: this.baseUrl,
+      referer: `${this.baseUrl}${refererPath}`,
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+      'x-requested-with': 'XMLHttpRequest',
+      ...extraHeaders
+    };
   }
 
-  private async changeEmailAddress(domainId: string): Promise<void> {
-    try {
-      const response = await httpClient.post(
-        `${this.baseUrl}/changeEmailAddress`,
-        `id=${domainId}`,
-        {
-          headers: {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+  private rememberMailboxState(address: string, state: EtempMailMailboxState): void {
+    if (!address) {
+      return;
+    }
+
+    const current = this.mailboxState.get(address) || {};
+    this.mailboxState.set(address, {
+      recoveryKey: state.recoveryKey || current.recoveryKey || '',
+      sessionId: state.sessionId || current.sessionId || '',
+      lisansimo: state.lisansimo || current.lisansimo || ''
+    });
+  }
+
+  private parseMailboxToken(accessToken?: string): EtempMailMailboxState {
+    const raw = String(accessToken || '').trim();
+    if (!raw) {
+      return { recoveryKey: '', sessionId: '', lisansimo: '' };
+    }
+
+    if (raw.includes('|')) {
+      const parsed: EtempMailMailboxState = {
+        recoveryKey: '',
+        sessionId: '',
+        lisansimo: ''
+      };
+      for (const part of raw.split('|').map((item) => item.trim()).filter(Boolean)) {
+        if (part.startsWith('rk=')) {
+          parsed.recoveryKey = part.slice(3).trim();
+        } else if (part.startsWith('sid=')) {
+          parsed.sessionId = part.slice(4).trim();
+        } else if (part.startsWith('ls=')) {
+          parsed.lisansimo = part.slice(3).trim();
+        }
+      }
+      if (parsed.recoveryKey || parsed.sessionId || parsed.lisansimo) {
+        return parsed;
+      }
+    }
+
+    if (/^[a-z0-9]{24,64}$/.test(raw) && raw === raw.toLowerCase()) {
+      return { recoveryKey: '', sessionId: raw, lisansimo: '' };
+    }
+
+    return { recoveryKey: raw, sessionId: '', lisansimo: '' };
+  }
+
+  private buildMailboxAccessToken(recoveryKey = '', sessionId = '', lisansimo = ''): string {
+    const parts: string[] = [];
+    if (recoveryKey) {
+      parts.push(`rk=${recoveryKey}`);
+    }
+    if (sessionId) {
+      parts.push(`sid=${sessionId}`);
+    }
+    if (lisansimo) {
+      parts.push(`ls=${lisansimo}`);
+    }
+    return parts.join('|') || sessionId || recoveryKey || '';
+  }
+
+  private async bootstrapMailboxSession(preferredDomain?: string): Promise<EtempMailMailboxState> {
+    const domainId = this.pickDomainId(preferredDomain);
+    return this.changeEmailAddress(domainId);
+  }
+
+  private pickDomainId(preferredDomain?: string): string {
+    if (preferredDomain && this.domainIdMapping[preferredDomain]) {
+      return this.domainIdMapping[preferredDomain];
+    }
+
+    const domainIds = Object.values(this.domainIdMapping);
+    return domainIds[Math.floor(Math.random() * domainIds.length)];
+  }
+
+  private async recoverMailboxByKey(recoveryKey: string): Promise<EtempMailMailboxState> {
+    if (!recoveryKey) {
+      throw this.createError(ChannelErrorType.AUTHENTICATION_ERROR, 'EtempMail requires a recovery key');
+    }
+
+    const response = await httpClient.post(
+      `${this.baseUrl}/recoverEmailAddress`,
+      `key=${encodeURIComponent(recoveryKey)}`,
+      {
+        headers: this.buildBrowserHeaders('/', {
+          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }),
+        timeout: this.config.timeout,
+        retries: this.config.retries
+      }
+    );
+
+    if (!response.ok) {
+      throw this.createError(
+        ChannelErrorType.API_ERROR,
+        `EtempMail recover mailbox failed: ${response.status}: ${response.statusText}`,
+        response.status
+      );
+    }
+
+    const nextSession = this.extractMailboxStateFromHeaders(response.headers);
+    if (!nextSession.sessionId) {
+      throw this.createError(
+        ChannelErrorType.AUTHENTICATION_ERROR,
+        'EtempMail recovery did not return a valid session'
+      );
+    }
+
+    this.applySessionState(nextSession);
+    return nextSession;
+  }
+
+  private async ensureMailboxSession(address: string, accessToken?: string): Promise<EtempMailMailboxState> {
+    const parsed = this.parseMailboxToken(accessToken);
+    const stored = this.mailboxState.get(address) || {};
+    const recoveryKey = parsed.recoveryKey || stored.recoveryKey || '';
+    const sessionId = parsed.sessionId || stored.sessionId || '';
+    const lisansimo = parsed.lisansimo || stored.lisansimo || '';
+
+    if (recoveryKey) {
+      const restored = await this.recoverMailboxByKey(recoveryKey);
+      const mergedState = {
+        recoveryKey,
+        sessionId: restored.sessionId || sessionId,
+        lisansimo: restored.lisansimo || lisansimo
+      };
+      this.rememberMailboxState(address, mergedState);
+      return mergedState;
+    }
+
+    if (sessionId || lisansimo) {
+      const mergedState = { recoveryKey, sessionId, lisansimo };
+      this.applySessionState(mergedState);
+      this.rememberMailboxState(address, mergedState);
+      return mergedState;
+    }
+
+    throw this.createError(
+      ChannelErrorType.AUTHENTICATION_ERROR,
+      'EtempMail requires a recovery key or valid mailbox session'
+    );
+  }
+
+  private async changeEmailAddress(domainId: string): Promise<EtempMailMailboxState> {
+    const response = await httpClient.post(
+      `${this.baseUrl}/changeEmailAddress`,
+      `id=${encodeURIComponent(domainId)}`,
+      {
+        headers: {
+          ...this.buildBrowserHeaders('/zh', {
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'cache-control': 'max-age=0',
             'content-type': 'application/x-www-form-urlencoded',
-            'origin': this.baseUrl,
-            'referer': `${this.baseUrl}/zh`,
-            'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'sec-gpc': '1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-            'cookie': `ci_session=${this.sessionId}`
-          },
-          timeout: this.config.timeout
-        }
-      );
-      
-      // 返回307重定向是正常的，表示域名设置成功
-      if (response.status === 307 || response.ok) {
-        console.log(`EtempMail domain changed to ID: ${domainId}`);
+            'upgrade-insecure-requests': '1'
+          }),
+          ...(this.buildSessionCookieHeader({ sessionId: this.sessionId, lisansimo: this.lisansimo })
+            ? { cookie: this.buildSessionCookieHeader({ sessionId: this.sessionId, lisansimo: this.lisansimo }) }
+            : {})
+        },
+        redirect: 'manual',
+        timeout: this.config.timeout
       }
-    } catch (error) {
-      console.warn(`Failed to change EtempMail domain: ${error}`);
-      // 不抛出错误，继续使用默认域名
+    );
+
+    if (!(response.ok || response.status === 301 || response.status === 307)) {
+      throw this.createError(
+        ChannelErrorType.API_ERROR,
+        `EtempMail domain bootstrap failed: ${response.status} ${response.statusText}`,
+        response.status
+      );
     }
+
+    const nextSession = this.extractMailboxStateFromHeaders(response.headers, {
+      sessionId: this.sessionId,
+      lisansimo: this.lisansimo
+    });
+    if (!nextSession.sessionId) {
+      throw this.createError(
+        ChannelErrorType.AUTHENTICATION_ERROR,
+        'EtempMail domain bootstrap did not return a valid session'
+      );
+    }
+
+    this.applySessionState(nextSession);
+    return nextSession;
   }
 
-  private mapToEmailMessage(msg: EtempMailInboxMessage, emailAddress: string, index: number): EmailMessage {
+  private extractMailboxStateFromHeaders(headers: Headers, fallback: EtempMailMailboxState = {}): EtempMailMailboxState {
     return {
-      id: String(index), // EtempMail 没有提供邮件ID，使用索引
+      recoveryKey: fallback.recoveryKey || '',
+      sessionId: this.extractCookieValue(headers, 'ci_session') || fallback.sessionId || '',
+      lisansimo: this.extractCookieValue(headers, 'lisansimo') || fallback.lisansimo || ''
+    };
+  }
+
+  private applySessionState(state: EtempMailMailboxState): void {
+    this.sessionId = state.sessionId || '';
+    this.lisansimo = state.lisansimo || '';
+  }
+
+  private buildSessionCookieHeader(state: EtempMailMailboxState = {}): string {
+    const cookies = [
+      state.sessionId ? `ci_session=${state.sessionId}` : '',
+      state.lisansimo ? `lisansimo=${state.lisansimo}` : ''
+    ].filter(Boolean);
+    return cookies.join('; ');
+  }
+
+  private extractCookieValue(headers: Headers, cookieName: string): string {
+    const typedHeaders = headers as Headers & {
+      getSetCookie?: () => string[];
+    };
+    const rawValues = typeof typedHeaders.getSetCookie === 'function'
+      ? typedHeaders.getSetCookie()
+      : [headers.get('set-cookie') || ''];
+    const pattern = new RegExp(`${this.escapeRegExp(cookieName)}=([^;,]+)`);
+
+    for (const rawValue of rawValues) {
+      const match = String(rawValue || '').match(pattern);
+      if (match?.[1]) {
+        return String(match[1]).trim();
+      }
+    }
+
+    return '';
+  }
+
+  private escapeRegExp(value: string): string {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private mapToEmailMessage(message: EtempMailInboxMessage, emailAddress: string, index: number): EmailMessage {
+    return {
+      id: String(index),
       from: {
-        email: msg.from
+        email: message.from
       },
       to: [{
         email: emailAddress
       }],
-      subject: msg.subject,
-      textContent: stripHtml(msg.body),
-      htmlContent: msg.body,
-      receivedAt: parseDate(msg.date),
-      isRead: false, // EtempMail 没有已读状态
+      subject: message.subject,
+      textContent: stripHtml(message.body),
+      htmlContent: message.body,
+      receivedAt: parseDate(message.date),
+      isRead: false,
       provider: this.name,
-      size: msg.body.length
+      size: message.body.length
     };
   }
 
@@ -479,19 +618,24 @@ export class EtempMailProvider implements IMailProvider {
   }
 
   private updateStats(type: 'request' | 'success' | 'error', responseTime?: number): void {
-    this.stats.totalRequests++;
-    this.stats.requestsToday++;
+    this.stats.totalRequests += 1;
+    this.stats.requestsToday += 1;
     this.stats.lastRequestTime = new Date();
 
     if (type === 'success') {
-      this.stats.successfulRequests++;
+      this.stats.successfulRequests += 1;
       if (responseTime) {
-        this.stats.averageResponseTime = 
-          (this.stats.averageResponseTime + responseTime) / 2;
+        this.stats.averageResponseTime =
+          this.stats.averageResponseTime > 0
+            ? (this.stats.averageResponseTime + responseTime) / 2
+            : responseTime;
       }
-    } else if (type === 'error') {
-      this.stats.failedRequests++;
-      this.stats.errorsToday++;
+      return;
+    }
+
+    if (type === 'error') {
+      this.stats.failedRequests += 1;
+      this.stats.errorsToday += 1;
     }
   }
-} 
+}

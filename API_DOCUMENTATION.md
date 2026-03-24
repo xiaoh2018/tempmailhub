@@ -2,7 +2,7 @@
 
 ## 概览
 
-TempMailHub 是一个聚合型临时邮箱 API 网关，当前统一接入以下 7 个渠道：
+TempMailHub 是一个聚合型临时邮箱 API 网关，当前统一接入以下 8 个渠道：
 
 - `tempmaillol` / Tempmail.lol
 - `duckmail` / DuckMail
@@ -11,6 +11,7 @@ TempMailHub 是一个聚合型临时邮箱 API 网关，当前统一接入以下
 - `mailtm` / Mail.tm
 - `etempmail` / EtempMail
 - `yydsmail` / YYDS Mail
+- `gptmail` / GPTMail
 
 ## Base URL
 
@@ -39,6 +40,7 @@ Authorization: Bearer YOUR_API_KEY
 - MinMail
 - Mail.tm
 - YYDS Mail
+- GPTMail
 
 重要说明：
 
@@ -69,6 +71,7 @@ Authorization: Bearer YOUR_API_KEY
 | Mail.tm | `mailtm` | 动态公网域名 | ✅ | ❌ | ✅ | 创建时返回 accessToken |
 | EtempMail | `etempmail` | `cross.edu.pl` `ohm.edu.pl` `usa.edu.pl` `beta.edu.pl` | ❌ | ✅ | ✅ | 支持教育域名 |
 | YYDS Mail | `yydsmail` | 动态公网域名池 | ✅ | ❌ | ❌ | 创建返回 accessToken，支持消息详情接口 |
+| GPTMail | `gptmail` | 动态公网域名池 | ✅ | ✅ | ✅ | 需要浏览器会话 token 与 `gm_sid` 续期 |
 
 ## 公共接口
 
@@ -156,6 +159,12 @@ curl -X POST http://localhost:8787/api/mail/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"provider": "yydsmail"}'
+
+# GPTMail
+curl -X POST http://localhost:8787/api/mail/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"provider": "gptmail"}'
 ```
 
 成功响应示例：

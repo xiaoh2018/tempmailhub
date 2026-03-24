@@ -8,6 +8,7 @@ import { TempmailLolProvider } from './tempmail-lol.js';
 import { DuckMailProvider } from './duckmail.js';
 import { TempmailIngProvider } from './tempmail-ing.js';
 import { YYDSMailProvider } from './yydsmail.js';
+import { GptMailProvider } from './gptmail.js';
 
 /**
  * 提供者管理器实现
@@ -50,6 +51,7 @@ export class ProviderManager implements IProviderManager {
       'mailtm',
       'yydsmail',
       'minmail',
+      'gptmail',
       'tempmaillol',
       'etempmail'
     ];
@@ -144,7 +146,8 @@ async function initializeProviders() {
     minmail: configManager.getChannelConfig('minmail'),
     mailtm: configManager.getChannelConfig('mailtm'),
     etempmail: configManager.getChannelConfig('etempmail'),
-    yydsmail: configManager.getChannelConfig('yydsmail')
+    yydsmail: configManager.getChannelConfig('yydsmail'),
+    gptmail: configManager.getChannelConfig('gptmail')
   };
 
   // 注册所有提供者
@@ -155,7 +158,8 @@ async function initializeProviders() {
     { name: 'minmail', Provider: MinMailProvider },
     { name: 'mailtm', Provider: MailTmProvider },
     { name: 'etempmail', Provider: EtempMailProvider },
-    { name: 'yydsmail', Provider: YYDSMailProvider }
+    { name: 'yydsmail', Provider: YYDSMailProvider },
+    { name: 'gptmail', Provider: GptMailProvider }
   ];
 
   for (const { name, Provider } of providers) {

@@ -29,6 +29,21 @@ interface TempmailIngInboxResponse {
   success?: boolean;
 }
 
+function compareTempmailIngMessages(left: EmailMessage, right: EmailMessage): number {
+  const timeDiff = right.receivedAt.getTime() - left.receivedAt.getTime();
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+
+  const leftId = Number.parseInt(String(left.id || ''), 10);
+  const rightId = Number.parseInt(String(right.id || ''), 10);
+  if (Number.isFinite(leftId) && Number.isFinite(rightId) && rightId !== leftId) {
+    return rightId - leftId;
+  }
+
+  return String(right.id || '').localeCompare(String(left.id || ''));
+}
+
 export class TempmailIngProvider implements IMailProvider {
   readonly name = 'tempmailing';
 
@@ -160,7 +175,9 @@ export class TempmailIngProvider implements IMailProvider {
         throw this.createError(ChannelErrorType.API_ERROR, 'Tempmail.ing returned unsuccessful inbox response');
       }
 
-      let emails = (data.emails || []).map(message => normalizeGenericEmailMessage(message, this.name, query.address));
+      let emails = (data.emails || [])
+        .map(message => normalizeGenericEmailMessage(message, this.name, query.address))
+        .sort(compareTempmailIngMessages);
 
       if (query.unreadOnly) {
         emails = emails.filter(email => !email.isRead);

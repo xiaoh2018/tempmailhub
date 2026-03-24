@@ -33,6 +33,10 @@ function joinTextValue(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+function looksLikeHtml(value: string): boolean {
+  return /<([a-z][\w:-]*)(?:\s[^>]*)?>/i.test(String(value || ''));
+}
+
 export function extractAddress(value: unknown): string {
   if (!value) {
     return '';
@@ -148,29 +152,42 @@ export function normalizeGenericEmailMessage(
   providerName: string,
   fallbackMailboxAddress: string
 ): EmailMessage {
+  const contentValue = joinTextValue(detail.content);
   const senderEmail = extractAddress(detail.from) || extractAddress(detail.sender) || firstNonEmptyString([
     detail.from_mail,
     detail.fromEmail,
     detail.from_email,
+    detail.fromAddress,
+    detail.from_address,
+    detail.senderAddress,
+    detail.sender_address,
+    detail.replyToEmail,
+    detail.reply_to_email,
     detail.sender_email
   ]);
 
   const htmlContent = firstNonEmptyString([
     joinTextValue(detail.htmlContent),
+    joinTextValue(detail.html_content),
     joinTextValue(detail.html),
     detail.htmlBody,
+    detail.html_body,
     detail.body_html,
-    detail.content_html
+    detail.content_html,
+    looksLikeHtml(contentValue) ? contentValue : ''
   ]);
 
   const textContent = firstNonEmptyString([
     detail.textContent,
+    detail.text_content,
     detail.text,
     detail.body,
     detail.body_text,
     detail.plain,
     detail.plainText,
-    detail.content,
+    detail.plain_text,
+    detail.content_text,
+    !looksLikeHtml(contentValue) ? contentValue : '',
     detail.snippet,
     detail.intro,
     htmlContent ? stripHtml(htmlContent) : ''
@@ -206,9 +223,18 @@ export function normalizeGenericEmailMessage(
     id: buildStableMessageId(providerName, fallbackMailboxAddress, detail),
     from: {
       email: senderEmail,
-      name: typeof detail.from === 'object' && detail.from !== null
-        ? firstNonEmptyString([(detail.from as Record<string, unknown>).name])
-        : undefined
+      name: firstNonEmptyString([
+        typeof detail.from === 'object' && detail.from !== null
+          ? firstNonEmptyString([
+              (detail.from as Record<string, unknown>).name,
+              (detail.from as Record<string, unknown>).text
+            ])
+          : '',
+        detail.fromName,
+        detail.from_name,
+        detail.senderName,
+        detail.sender_name
+      ]) || undefined
     },
     to: toContacts(detail.to, extractAddress(detail.recipient) || fallbackMailboxAddress),
     cc: Array.isArray(detail.cc) ? toContacts(detail.cc) : undefined,
@@ -218,14 +244,18 @@ export function normalizeGenericEmailMessage(
     htmlContent,
     receivedAt: parseDate(firstNonEmptyString([
       detail.receivedAt,
+      detail.received_at,
       detail.createdAt,
       detail.created_at,
       detail.updatedAt,
+      detail.updated_at,
+      detail.sentAt,
+      detail.sent_at,
       detail.date,
       detail.timestamp,
       new Date().toISOString()
     ])),
-    isRead: Boolean(detail.isRead ?? detail.read ?? detail.seen),
+    isRead: Boolean(detail.isRead ?? detail.is_read ?? detail.read ?? detail.seen),
     provider: providerName,
     messageId,
     attachments,

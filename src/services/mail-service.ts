@@ -74,7 +74,7 @@ export class MailService {
       // 从邮箱地址推断提供者
       const provider = query.provider ? 
         providerManager.getProvider(query.provider) :
-        this.inferProviderFromEmail(query.address);
+        this.inferProvider(query.address, query.accessToken);
 
       if (!provider) {
         return {
@@ -118,7 +118,7 @@ export class MailService {
     try {
       const provider = providerName ? 
         providerManager.getProvider(providerName) :
-        this.inferProviderFromEmail(emailAddress);
+        this.inferProvider(emailAddress, accessToken);
 
       if (!provider) {
         return {
@@ -202,7 +202,12 @@ export class MailService {
   /**
    * 从邮箱地址推断提供者
    */
-  private inferProviderFromEmail(emailAddress: string): any {
+  private inferProvider(emailAddress: string, accessToken?: string): any {
+    const token = String(accessToken || '').trim();
+    if (token.startsWith('gptmail.')) {
+      return providerManager.getProvider('gptmail');
+    }
+
     const domain = emailAddress.split('@')[1];
     
     // 根据域名推断提供者
