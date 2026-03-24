@@ -509,7 +509,7 @@ app.get('/api/info', (c) => {
         { id: 'minmail', name: 'MinMail', domains: ['atminmail.com'], customizable: false },
         { id: 'mailtm', name: 'Mail.tm', domains: ['自动选择可用公网域名'], customizable: false },
         { id: 'etempmail', name: 'EtempMail', domains: ['cross.edu.pl', 'ohm.edu.pl', 'usa.edu.pl', 'beta.edu.pl'], customizable: true },
-        { id: 'yydsmail', name: 'YYDS Mail', domains: ['动态公网域名池'], customizable: false }
+        { id: 'yydsmail', name: 'YYDS Mail', domains: ['优选公网域名池', '支持指定 domain / prefix'], customizable: true }
       ],
       authentication: {
         enabled: getAuthConfig(c.env).enabled,
