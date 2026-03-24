@@ -1,78 +1,84 @@
-# TempMailHub
+# TempMailHub 后端 README
 
-<div align="center">
+## 项目定位
 
-**🌟 一个现代化的跨平台临时邮件网关服务 🌟**
+`_tempmailhub_src` 是本项目的后端聚合服务源码。
 
-基于 Hono 框架构建的多平台临时邮箱 API 聚合服务
+它基于 Hono 构建，负责统一封装多个临时邮箱渠道，对外提供统一的创建邮箱、读取收件箱、读取邮件详情、渠道健康检查与统计接口。
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xiaoh2018/tempmailhub)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/xiaoh2018/tempmailhub)
-[![Deploy on Deno](https://deno.com/button)](https://app.deno.com/new?clone=https://github.com/xiaoh2018/tempmailhub)
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/xiaoh2018/tempmailhub)
+当前仓库地址：
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-4.9+-blue.svg)
-![Hono](https://img.shields.io/badge/Hono-4.6+-orange.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-green.svg)
+- `https://github.com/xiaoh2018/tempmailhub`
 
-</div>
+## 当前状态
 
-## 🌟 功能特性
+本次已完成的本地检查：
 
-- 🔗 **多服务商聚合**: 集成 Tempmail.lol、DuckMail、Tempmail.ing、MinMail、Mail.tm、EtempMail、YYDS Mail 七个临时邮箱渠道
-- 🌍 **多平台部署**: 支持 Cloudflare Workers、Deno、Vercel、Node.js 等多种部署平台
-- 🔐 **双层认证**: TempMailHub API Key + Provider AccessToken 保障安全
-- 🔄 **智能重试**: 内置重试机制和错误处理
-- 📊 **健康监控**: 实时监控各渠道状态和统计信息
-- 🛡️ **类型安全**: 完整的 TypeScript 类型定义
-- 🐳 **容器化**: 支持 Docker 部署和 GitHub Actions 自动构建
+- `npm run build` 通过
 
-## 🚀 快速开始
+本次已完成的在线 smoke test：
 
-### 本地开发
+- 线上 `https://mail.3vhost.eu.org/api/mail/create` 可成功创建 MinMail 邮箱
+- 线上 `https://mail.3vhost.eu.org/api/mail/list` 可使用 MinMail token 正常读取空收件箱
 
-```bash
-# 克隆项目
-git clone https://github.com/xiaoh2018/tempmailhub.git
-cd tempmailhub
+当前已确认：
 
-# 安装依赖
-npm install
+- MinMail 已按“每个邮箱独立 accessToken”模式修复
+- 当前仓库代码已推送到 GitHub 主分支
 
-# 启动开发服务器
-npm run dev
+## 当前支持的渠道
 
-# 访问服务
-open http://localhost:8787
-```
+后端当前接入 7 个渠道：
 
-### 一键部署
+- `tempmaillol` / Tempmail.lol
+- `duckmail` / DuckMail
+- `tempmailing` / Tempmail.ing
+- `minmail` / MinMail
+- `mailtm` / Mail.tm
+- `etempmail` / EtempMail
+- `yydsmail` / YYDS Mail
 
-点击上方任意部署按钮，即可一键部署到对应平台。
+## token 说明
 
-## 📖 文档
+这些渠道建议或必须显式回传 `accessToken`：
 
-| 文档 | 内容 |
-|------|------|
-| [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) | 📚 **完整API文档** - 接口说明、使用示例、测试方法 |
-| [API_SECURITY.md](./API_SECURITY.md) | 🔐 **安全配置** - API Key 认证详细配置 |
-| [DEPLOYMENT.md](./DEPLOYMENT.md) | 🚀 **部署指南** - 多平台部署详细说明 |
-| [TEMPMAILLOL_PROXY.md](./TEMPMAILLOL_PROXY.md) | 🛰️ **Tempmail.lol 代理机制** - 自有代理接口配置与回退说明 |
+- Tempmail.lol
+- DuckMail
+- MinMail
+- Mail.tm
+- YYDS Mail
 
-## 🎯 支持的服务商
+这些渠道当前不强制依赖 token：
 
-| 服务商 | 域名数量 | 需要 AccessToken | 域名自定义 | 特性 |
-|-------|---------|----------------|-----------|------|
-| **Tempmail.lol** | 服务端分配 | ✅ | ❌ | 优先走 `TEMPMAILLOL_PROXY_BASE_URL`，不通时再试 CodeTabs |
-| **DuckMail** | 动态域名池 | ✅ | ✅ | 支持自定义前缀与动态域名 |
-| **Tempmail.ing** | 服务端分配 | ❌ | ❌ | 创建和收件流程简单 |
-| **MinMail** | 1个 | ✅ | ❌ | 创建返回 visitor-id accessToken，收件箱读取时应显式带回 |
-| **Mail.tm** | 动态公网域名 | ✅ | ❌ | 创建时返回 accessToken |
-| **EtempMail** | 4个 | ❌ | ✅ | 支持教育域名 |
-| **YYDS Mail** | 动态公网域名池 | ✅ | ❌ | 创建返回 accessToken，支持消息详情接口 |
+- Tempmail.ing
+- EtempMail
 
-## 📋 基本 API 使用
+### MinMail 特别说明
+
+MinMail 当前逻辑为：
+
+- 创建邮箱时生成独立 `visitor-id`
+- 将其作为 `accessToken` 返回给调用方
+- 读取收件箱和邮件详情时优先使用该 token
+
+如果客户端只保存邮箱地址、不保存 token，MinMail 收件箱行为会不稳定。
+
+## 主要 API
+
+### 公共接口
+
+- `GET /health`
+- `GET /api/info`
+- `GET /api/mail/providers/stats`
+- `POST /api/mail/providers/test-connections`
+
+### 受保护接口
+
+- `POST /api/mail/create`
+- `POST /api/mail/list`
+- `POST /api/mail/content`
+
+## 核心接口示例
 
 ### 1. 创建邮箱
 
@@ -80,118 +86,162 @@ open http://localhost:8787
 curl -X POST http://localhost:8787/api/mail/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"provider": "mailtm"}'
+  -d '{"provider":"mailtm"}'
 ```
 
-### 2. 获取邮件
+### 2. 获取收件箱
 
 ```bash
 curl -X POST http://localhost:8787/api/mail/list \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
-    "address": "user@somoj.com",
-    "accessToken": "provider_token"
+    "provider":"minmail",
+    "address":"example@atminmail.com",
+    "accessToken":"provider-specific-token",
+    "limit":10
   }'
 ```
 
-> 💡 **详细使用说明**: 请查看 [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)  
-> 🚀 **部署指南**: 请查看 [DEPLOYMENT.md](./DEPLOYMENT.md)
-
-## 🏗️ 项目架构
-
-```
-TempMailHub/
-├── src/
-│   ├── providers/         # 邮件服务商适配器
-│   ├── services/          # 业务逻辑层
-│   ├── middleware/        # 认证中间件
-│   ├── types/             # TypeScript 类型定义
-│   └── index.ts           # 应用入口
-├── API_DOCUMENTATION.md   # 完整API文档
-├── API_SECURITY.md        # 安全配置文档
-├── DEPLOYMENT.md          # 部署指南
-└── README.md              # 项目说明
-```
-
-## 🔧 开发
-
-### 添加新服务商
-
-1. 在 `src/providers/` 创建适配器文件
-2. 实现 `IMailProvider` 接口
-3. 在 `src/providers/index.ts` 注册服务商
-
-### 构建和测试
+### 3. 获取邮件详情
 
 ```bash
-# 构建
-npm run build
+curl -X POST http://localhost:8787/api/mail/content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "provider":"minmail",
+    "address":"example@atminmail.com",
+    "id":"message-id",
+    "accessToken":"provider-specific-token"
+  }'
+```
 
-# 测试
+更完整的参数说明请看：
+
+- [API_DOCUMENTATION.md](/h:/VS/聚合邮箱/_tempmailhub_src/API_DOCUMENTATION.md)
+
+## 认证说明
+
+后端认证变量：
+
+- `TEMPMAILHUB_API_KEY`
+
+行为如下：
+
+- 如果设置了 `TEMPMAILHUB_API_KEY`，则保护接口需要 `Authorization: Bearer <api-key>`
+- 如果没有设置，则接口公开可访问
+
+## Tempmail.lol 代理相关变量
+
+后端当前支持 Tempmail.lol 自有代理优先模式。
+
+相关变量：
+
+- `TEMPMAILLOL_PROXY_BASE_URL`
+- `TEMPMAILLOL_PROXY_SHARED_TOKEN`
+
+说明文档见：
+
+- [TEMPMAILLOL_PROXY.md](/h:/VS/聚合邮箱/_tempmailhub_src/TEMPMAILLOL_PROXY.md)
+
+## 本地开发
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 开发运行
+
+```bash
+npm run dev
+```
+
+或：
+
+```bash
+npm run dev:node
+```
+
+### 构建
+
+```bash
+npm run build
+```
+
+### 测试
+
+```bash
 npm test
 ```
 
-## 🤝 贡献
+## 多平台部署
 
-欢迎提交 Issue 和 Pull Request！
+当前脚本已预留多平台部署入口：
 
-1. Fork 本项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+- `npm run deploy:cloudflare`
+- `npm run deploy:vercel`
+- `npm run deploy:deno`
+- `npm run deploy:netlify`
 
-## ⚠️ 免责声明
+部署细节见：
 
-本项目 **TempMailHub** 仅供**学习、研究和测试**目的使用。请用户遵守以下条款：
+- [DEPLOYMENT.md](/h:/VS/聚合邮箱/_tempmailhub_src/DEPLOYMENT.md)
 
-### 使用限制
+## 目录结构
 
-- ❌ **禁止用于任何非法、违规或恶意活动**
-- ❌ **禁止用于垃圾邮件发送或网络攻击**
-- ❌ **禁止用于绕过任何服务的正当验证机制**
-- ❌ **禁止用于任何可能损害第三方利益的行为**
+当前目录重点如下：
 
-### 责任声明
+- `src/index.ts`：主入口
+- `src/providers/`：各邮箱渠道适配器
+- `src/services/`：邮箱业务逻辑
+- `src/middleware/`：认证等中间件
+- `src/routes/`：路由封装
+- `src/types/`：类型定义
+- `src/utils/`：辅助工具
+- `API_DOCUMENTATION.md`：完整 API 文档
+- `API_SECURITY.md`：认证与安全说明
+- `DEPLOYMENT.md`：部署说明
+- `TEMPMAILLOL_PROXY.md`：Tempmail.lol 代理机制说明
 
-- 🔸 本项目**不存储**任何用户邮件内容或个人信息
-- 🔸 本项目仅作为**API聚合器**，不对第三方服务的可用性负责
-- 🔸 使用本服务造成的任何后果由**用户自行承担**
-- 🔸 开发者**不承担**因使用本项目而产生的任何法律责任
+## 当前 provider 文件
 
-## 📄 许可证
+当前 provider 实现位于：
 
-本项目基于 [MIT 许可证](LICENSE) 开源。
+- `src/providers/tempmail-lol.ts`
+- `src/providers/duckmail.ts`
+- `src/providers/tempmail-ing.ts`
+- `src/providers/minmail.ts`
+- `src/providers/mail-tm.ts`
+- `src/providers/etempmail.ts`
+- `src/providers/yydsmail.ts`
 
-## 🙏 致谢
+## 适合继续修改的入口
 
-### 技术框架
-- [Hono](https://hono.dev/) - 轻量级 Web 框架
+后续如果继续改后端，优先看这些文件：
 
-### 临时邮箱服务提供商
-本项目感谢以下优秀的临时邮箱服务提供商：
+- [src/index.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/index.ts)
+- [src/providers/index.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/providers/index.ts)
+- [src/providers/minmail.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/providers/minmail.ts)
+- [src/providers/tempmail-lol.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/providers/tempmail-lol.ts)
+- [src/services/mail-service.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/services/mail-service.ts)
+- [src/middleware/api-auth.ts](/h:/VS/聚合邮箱/_tempmailhub_src/src/middleware/api-auth.ts)
 
-- [Tempmail.lol](https://tempmail.lol/) - 常用的一次性邮箱接口服务
-- [DuckMail](https://duckmail.sbs/) - 支持动态域名池和前缀的临时邮箱服务
-- [Tempmail.ing](https://tempmail.ing/) - 轻量的临时邮箱 API 服务
-- [MinMail](https://minmail.app/) - 自动过期、高可用的临时邮箱服务
-- [Mail.tm](https://mail.tm/) - 稳定可靠的临时邮箱 API 服务
-- [EtempMail](https://etempmail.com/) - 提供教育域名的临时邮箱服务
-- [YYDS Mail](https://vip.215.im/) - 支持临时邮箱、消息详情与官方开放文档
+## 注意事项
 
-> **⚠️ 重要说明**: 
-> 
-> 本项目 **TempMailHub** 仅提供 **API 聚合服务**，不提供 Web UI 界面。
-> 
-> 如需**图形界面体验**，请直接访问上述各临时邮箱提供方的官方网站～
+- 这是聚合后端，不负责托管真实邮箱账号
+- 上游渠道策略变化会直接影响成功率与返回格式
+- 需要 token 的渠道，客户端应自行保存并回传 token
+- 公共代理只能作为兜底，不适合作为长期主链路
+- 如果用于生产，建议开启 `TEMPMAILHUB_API_KEY`
 
----
+## 补充说明
 
-<div align="center">
+如果你同时维护静态版和 EdgePages 版：
 
-**如果这个项目对您有帮助，请给我们一个 ⭐**
+- 静态版目录：`../静态index`
+- EdgePages 目录：`../edgepages版本`
 
-Made with ❤️ by [TempMailHub Contributors](https://github.com/xiaoh2018/tempmailhub/contributors)
-
-</div>
+建议保持三端文档、渠道列表和 token 规则同步。
