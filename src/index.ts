@@ -411,6 +411,9 @@ app.get('/', (c) => {
                             <a href="https://etempmail.com" target="_blank" class="provider-link">
                                 EtempMail
                             </a>
+                            <a href="https://vip.215.im" target="_blank" class="provider-link">
+                                YYDS Mail
+                            </a>
                         </div>
                         <p style="margin-top: 16px; color: #64748b; font-size: 0.875rem;">
                             🔧 <strong>架构优势</strong>：基于插件化设计，新增服务商只需实现 IMailProvider 接口
@@ -505,7 +508,8 @@ app.get('/api/info', (c) => {
         { id: 'tempmailing', name: 'Tempmail.ing', domains: ['服务端分配'], customizable: false },
         { id: 'minmail', name: 'MinMail', domains: ['atminmail.com'], customizable: false },
         { id: 'mailtm', name: 'Mail.tm', domains: ['自动选择可用公网域名'], customizable: false },
-        { id: 'etempmail', name: 'EtempMail', domains: ['cross.edu.pl', 'ohm.edu.pl', 'usa.edu.pl', 'beta.edu.pl'], customizable: true }
+        { id: 'etempmail', name: 'EtempMail', domains: ['cross.edu.pl', 'ohm.edu.pl', 'usa.edu.pl', 'beta.edu.pl'], customizable: true },
+        { id: 'yydsmail', name: 'YYDS Mail', domains: ['动态公网域名池'], customizable: false }
       ],
       authentication: {
         enabled: getAuthConfig(c.env).enabled,

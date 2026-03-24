@@ -20,7 +20,7 @@
 
 ## 🌟 功能特性
 
-- 🔗 **多服务商聚合**: 集成 Tempmail.lol、DuckMail、Tempmail.ing、MinMail、Mail.tm、EtempMail 六个临时邮箱渠道
+- 🔗 **多服务商聚合**: 集成 Tempmail.lol、DuckMail、Tempmail.ing、MinMail、Mail.tm、EtempMail、YYDS Mail 七个临时邮箱渠道
 - 🌍 **多平台部署**: 支持 Cloudflare Workers、Deno、Vercel、Node.js 等多种部署平台
 - 🔐 **双层认证**: TempMailHub API Key + Provider AccessToken 保障安全
 - 🔄 **智能重试**: 内置重试机制和错误处理
@@ -70,6 +70,7 @@ open http://localhost:8787
 | **MinMail** | 1个 | ❌ | ❌ | 自动过期、高可用 |
 | **Mail.tm** | 动态公网域名 | ✅ | ❌ | 创建时返回 accessToken |
 | **EtempMail** | 4个 | ❌ | ✅ | 支持教育域名 |
+| **YYDS Mail** | 动态公网域名池 | ✅ | ❌ | 创建返回 accessToken，支持消息详情接口 |
 
 ## 📋 基本 API 使用
 
@@ -177,6 +178,7 @@ npm test
 - [MinMail](https://minmail.app/) - 自动过期、高可用的临时邮箱服务
 - [Mail.tm](https://mail.tm/) - 稳定可靠的临时邮箱 API 服务
 - [EtempMail](https://etempmail.com/) - 提供教育域名的临时邮箱服务
+- [YYDS Mail](https://vip.215.im/) - 支持临时邮箱、消息详情与官方开放文档
 
 > **⚠️ 重要说明**: 
 > 

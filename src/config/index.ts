@@ -61,6 +61,16 @@ export const defaultConfig: Config = {
         requests: 25,
         window: 60
       }
+    },
+    yydsmail: {
+      enabled: true,
+      priority: 7,
+      timeout: 12000,
+      retries: 1,
+      rateLimit: {
+        requests: 20,
+        window: 60
+      }
     }
   },
   server: {
