@@ -51,14 +51,39 @@ export function parseEmail(email: string): { username: string; domain: string } 
  * 格式化时间戳
  */
 export function formatTimestamp(date: Date | string | number): string {
-  const d = new Date(date);
+  const d = parseDate(date);
   return d.toISOString();
 }
 
 /**
  * 解析时间字符串
  */
-export function parseDate(dateString: string): Date {
+export function parseDate(dateInput: Date | string | number): Date {
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? new Date() : dateInput;
+  }
+
+  if (typeof dateInput === 'number' && Number.isFinite(dateInput)) {
+    const timestamp = Math.abs(dateInput) < 1e12 ? dateInput * 1000 : dateInput;
+    const numericDate = new Date(timestamp);
+    return isNaN(numericDate.getTime()) ? new Date() : numericDate;
+  }
+
+  const dateString = String(dateInput || '').trim();
+  if (!dateString) {
+    return new Date();
+  }
+
+  if (/^-?\d+(?:\.\d+)?$/.test(dateString)) {
+    const numeric = Number(dateString);
+    if (Number.isFinite(numeric)) {
+      const timestamp = Math.abs(numeric) < 1e12 ? numeric * 1000 : numeric;
+      const numericDate = new Date(timestamp);
+      if (!isNaN(numericDate.getTime())) {
+        return numericDate;
+      }
+    }
+  }
   // 尝试多种日期格式
   let date = new Date(dateString);
   

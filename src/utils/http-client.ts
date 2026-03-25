@@ -7,7 +7,6 @@ export interface HttpRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
   body?: string | ArrayBuffer | FormData;
-  cache?: RequestCache;
   redirect?: RequestRedirect;
   timeout?: number;
   retries?: number;
@@ -36,7 +35,6 @@ export class HttpClient {
       method = 'GET',
       headers = {},
       body,
-      cache = 'no-store',
       redirect = 'follow',
       timeout = this.defaultTimeout,
       retries = this.defaultRetries,
@@ -59,7 +57,6 @@ export class HttpClient {
             ...headers
           },
           body,
-          cache,
           redirect,
           signal: controller.signal
         });
